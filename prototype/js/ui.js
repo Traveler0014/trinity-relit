@@ -24,9 +24,7 @@ function splitByLanguage(t) {
 }
 
 export const ui = {
-  _append(html) {
-    const el = document.createElement("div");
-    el.innerHTML = html;
+  _appendEl(el) {
     const out = $("#output");
     out.appendChild(el);
 
@@ -35,6 +33,13 @@ export const ui = {
       out.removeChild(out.firstChild);
     }
     out.scrollTop = out.scrollHeight;
+    return el;
+  },
+
+  _append(html) {
+    const el = document.createElement("div");
+    el.innerHTML = html;
+    return this._appendEl(el);
   },
 
   location(name, cn) {
@@ -76,6 +81,98 @@ export const ui = {
   hideLoading() {
     const el = $("#loading");
     if (el) el.style.display = "none";
+  },
+
+  // ── 存档相关 ──
+
+  // 开局询问是否续玩。返回 "continue" | "restart"。
+  askResume(summary) {
+    return new Promise((resolve) => {
+      const box = document.createElement("div");
+      box.className = "resume-prompt";
+
+      const line = document.createElement("div");
+      line.className = "resume-summary";
+      // 用 textContent 而非 innerHTML：摘要的内容来自存档文件，
+      // 导入的存档可能是别人给的，不能让它往页面里注入标记。
+      line.textContent = `发现上次的存档 —— ${summary}`;
+      box.appendChild(line);
+
+      const row = document.createElement("div");
+      row.className = "resume-actions";
+
+      const choose = (label, value) => {
+        const b = document.createElement("button");
+        b.className = "btn" + (value === "continue" ? " btn-primary" : "");
+        b.textContent = label;
+        b.addEventListener("click", () => {
+          row.replaceWith(Object.assign(document.createElement("div"), {
+            className: "resume-chosen",
+            textContent: `· ${label}`,
+          }));
+          resolve(value);
+        });
+        return b;
+      };
+
+      row.appendChild(choose("继续上次冒险", "continue"));
+      row.appendChild(choose("重新开始", "restart"));
+      box.appendChild(row);
+      this._appendEl(box);
+    });
+  },
+
+  // 把存档存成文件交给玩家。浏览器不允许直接写磁盘，走 Blob 下载。
+  downloadJSON(filename, text) {
+    const blob = new Blob([text], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // 立刻 revoke 在部分浏览器上会打断下载，延后释放。
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  },
+
+  // 让玩家挑一个存档文件，返回文件内容文本；取消则返回 null。
+  pickJSONFile() {
+    return new Promise((resolve) => {
+      const inp = $("#save-file-input");
+      if (!inp) { resolve(null); return; }
+      // 选同一个文件两次也要能触发 change，先清空。
+      inp.value = "";
+      const onChange = () => {
+        inp.removeEventListener("change", onChange);
+        const file = inp.files && inp.files[0];
+        if (!file) { resolve(null); return; }
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => resolve(null);
+        reader.readAsText(file);
+      };
+      inp.addEventListener("change", onChange);
+      inp.click();
+    });
+  },
+
+  setSaveControls({ onExport, onImport, onRestart }) {
+    const bind = (sel, fn) => {
+      const el = $(sel);
+      if (el && fn) el.addEventListener("click", fn);
+    };
+    bind("#btn-export", onExport);
+    bind("#btn-import", onImport);
+    bind("#btn-restart", onRestart);
+  },
+
+  confirm(msg) {
+    return window.confirm(msg);
+  },
+
+  reload() {
+    window.location.reload();
   },
 
   enableInput(handler) {

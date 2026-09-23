@@ -44,7 +44,7 @@
 
 ### T2 阶段 3：存档 — Claude
 - 分支：`claude/save-system`
-- 状态：🔨
+- 状态：👀（已自测通过，等人类审查开 PR）
 - 涉及文件：`prototype/js/engine.js`（仅新增 `serialize()` / `deserialize()` 及每回合自动存档钩子）、`prototype/js/ui.js`、`prototype/js/main.js`、`prototype/index.html`
 - 说明：存档须带 `version` 字段；`flags` / `visited` 为 Set，存为数组；读档前先 `activateChapter(state.chapter)`。详见 `SHIP_PLAN.md` 阶段 3。
 - 验收：中途刷新后进度、物品、日晷符号、flag 全部保留；导出存档可在另一浏览器导入继续。
@@ -68,4 +68,8 @@
 
 （任一 agent 在工作中发现的、超出自己任务范围的问题记在这里，由人类决定如何处理）
 
--
+- **计时器回调跨不过读档**（T2 发现，已知限制）。`state.timer.perTurn` 是章节数据里的闭包，JSON 存不下。存档只带走 `{remaining, id}`，读档后计时器照常倒数但回调不再触发——影响 `prologue.js` 的 doomsday 临近警告与 `pacific.js` 的七分钟超时提示。
+  修法：engine 加 `registerTimerHandler(id, fn)` 注册表，`prologue.js` / `pacific.js` 各加约 4 行按 id 注册回调。约 8 行增量改动，但要动两个章节文件，超出 T2 的「涉及文件」范围，故未做。
+- **开局房间的 `onEnter` 从不触发**（T2 发现，既有行为）。`main.js` 的 boot 用 `describeRoom()` 而非 `moveTo()` 进入首个房间，因此 `palace_gate.onEnter` 里启动 doomsday 计时器的那段，只有在玩家离开 Palace Gate 后再走回来时才会执行。读档路径沿用了同样的语义（读档只还原状态、不重放 `onEnter` 副作用）。若这是 bug，修它会改变开局节奏，需要通关测试兜底后再动。
+- **死亡后没有重启逻辑**（T2 发现，既有缺陷）。`engine.js` 里「输入任意内容重新开始」是空头支票，全仓库没有任何重启实现。T2 绕开的方式是：死亡状态不写存档（刷新即回到死前一回合）+ 头部提供「重新开始」按钮。引擎层的缺口仍在。
+- **存档往返自检应补进 `tests/`**（T2 发现）。T2 期间用 scratchpad 里的临时脚本验证了 7 项（往返一致、读档后可继续、懒加载章节可读档、4 类坏存档被拒、死亡不写档），但 `tests/` 是 T1 的范围，没有入库。T1 合并后建议补一个 `tests/save.test.js`。

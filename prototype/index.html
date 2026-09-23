@@ -60,7 +60,15 @@ body {
   color: var(--dim);
 }
 
-#debug-toggle {
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.hdr-btn {
   background: transparent;
   border: 1px solid var(--border);
   color: var(--dim);
@@ -69,9 +77,47 @@ body {
   cursor: pointer;
   font-size: 12px;
   font-family: inherit;
+  white-space: nowrap;
   transition: border-color 0.2s, color 0.2s;
 }
-#debug-toggle:hover { border-color: var(--amber); color: var(--amber); }
+.hdr-btn:hover { border-color: var(--amber); color: var(--amber); }
+
+/* 开局的「继续 / 重开」选择 */
+.resume-prompt {
+  margin: 12px 0;
+  padding: 12px 14px;
+  background: rgba(201, 185, 124, 0.07);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--amber);
+  border-radius: 0 4px 4px 0;
+}
+
+.resume-summary { color: var(--bright); margin-bottom: 10px; }
+.resume-chosen  { color: var(--dim); font-style: italic; }
+
+.resume-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--bright);
+  padding: 7px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color 0.2s, background 0.2s, color 0.2s;
+}
+.btn:hover { border-color: var(--amber); }
+
+/* 主按钮在这套配色里是实心琥珀配深字，取代原来的实心蓝配白字 */
+.btn-primary {
+  background: var(--amber);
+  border-color: var(--amber);
+  color: var(--bg);
+  font-weight: 500;
+}
+.btn-primary:hover { background: var(--bright); border-color: var(--bright); }
 
 #output {
   flex: 1;
@@ -222,8 +268,13 @@ body {
 }
 
 @media (max-width: 600px) {
-  #header { padding: 10px 14px; }
+  /* 四个按钮在窄屏放不下一行。让整个头部换行，标题独占一行，
+     否则按钮会把标题挤成断开的两截。 */
+  #header { padding: 10px 14px; gap: 8px; flex-wrap: wrap; }
   #header .subtitle { display: none; }
+  #header h1 { white-space: nowrap; }
+  .header-actions { gap: 6px; flex: 1; }
+  .hdr-btn { padding: 4px 8px; font-size: 11px; }
   #output { padding: 14px; }
   #input-area { padding: 10px 14px; }
   /* 留出 iPhone 底部小横条的空间 */
@@ -238,8 +289,16 @@ body {
     <h1>Trinity · 中文版</h1>
     <span class="subtitle">完全浏览器端推理</span>
   </div>
-  <button id="debug-toggle" onclick="toggleDebug()">调试面板: 关</button>
+  <div class="header-actions">
+    <button id="btn-export" class="hdr-btn" title="把当前进度导出为 JSON 文件">导出存档</button>
+    <button id="btn-import" class="hdr-btn" title="从 JSON 文件读取进度，会覆盖当前存档">导入存档</button>
+    <button id="btn-restart" class="hdr-btn" title="清除存档，从头开始">重新开始</button>
+    <button id="debug-toggle" class="hdr-btn" onclick="toggleDebug()">调试面板: 关</button>
+  </div>
 </div>
+
+<!-- 导入存档用。ui.pickJSONFile() 会程序化点击它。 -->
+<input type="file" id="save-file-input" accept="application/json,.json" hidden>
 
 <div id="output"></div>
 

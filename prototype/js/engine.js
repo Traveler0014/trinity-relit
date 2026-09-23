@@ -1,4 +1,15 @@
 // ═══════════════════════════════════════════════════
+//  存档格式版本
+// ═══════════════════════════════════════════════════
+//
+// 存档一旦发布就要向后兼容。任何会让旧存档读出错误状态的改动
+// （字段改名、语义变化、Set/Array 结构调整）都必须递增此值，
+// 并在 deserialize 里补一条迁移分支。
+// 单纯新增字段不必递增：deserialize 对缺失字段一律回落到默认值。
+
+export const SAVE_VERSION = 1;
+
+// ═══════════════════════════════════════════════════
 //  GameState — 游戏全局状态
 // ═══════════════════════════════════════════════════
 
@@ -74,6 +85,61 @@ export class GameState {
     return this.timer;
   }
   clearTimer() { this.timer = null; }
+
+  // ── 序列化 ──
+  // flags / visited 是 Set，JSON 存不下，转数组。
+  // 其余字段都是原始值或纯对象，可直接带走。
+  serialize() {
+    return {
+      room: this.room,
+      itemLoc: { ...this.itemLoc },
+      flags: [...this.flags],
+      counters: { ...this.counters },
+      score: this.score,
+      maxScore: this.maxScore,
+      turns: this.turns,
+      chapter: this.chapter,
+      // timer.perTurn 是章节数据里的闭包，无法序列化，只带走倒数和 id。
+      // 后果：读档后计时器照常倒数，但每回合回调不再触发（doomsday 的
+      // 临近警告、太平洋七分钟的超时提示）。要修复需要章节文件按 id
+      // 注册回调，那超出了本次改动的文件范围，已登记在 TASKS.md。
+      timer: this.timer ? { remaining: this.timer.remaining, id: this.timer.id } : null,
+      visited: [...this.visited],
+      flipped: this.flipped,
+      sundialSymbol: this.sundialSymbol,
+      leverPulled: this.leverPulled,
+      dead: this.dead,
+    };
+  }
+
+  // 缺失字段一律回落到构造函数给的默认值，这样旧存档遇上新字段不会崩。
+  static deserialize(data) {
+    const s = new GameState();
+    if (!data || typeof data !== "object") return s;
+
+    if (typeof data.room === "string") s.room = data.room;
+    if (data.itemLoc && typeof data.itemLoc === "object") s.itemLoc = { ...data.itemLoc };
+    if (Array.isArray(data.flags)) s.flags = new Set(data.flags);
+    if (data.counters && typeof data.counters === "object") s.counters = { ...data.counters };
+    if (typeof data.score === "number") s.score = data.score;
+    if (typeof data.maxScore === "number") s.maxScore = data.maxScore;
+    if (typeof data.turns === "number") s.turns = data.turns;
+    if (typeof data.chapter === "string") s.chapter = data.chapter;
+    if (Array.isArray(data.visited)) s.visited = new Set(data.visited);
+    if (typeof data.flipped === "boolean") s.flipped = data.flipped;
+    if (typeof data.sundialSymbol === "number") s.sundialSymbol = data.sundialSymbol;
+    if (typeof data.leverPulled === "boolean") s.leverPulled = data.leverPulled;
+    if (typeof data.dead === "boolean") s.dead = data.dead;
+
+    // perTurn 置空，_postTurn 里对它有判空保护。
+    s.timer = data.timer && typeof data.timer.remaining === "number"
+      ? { remaining: data.timer.remaining, id: data.timer.id, perTurn: null }
+      : null;
+
+    // 当前房间必须在 visited 里，否则地图/统计会漏掉它。
+    s.visited.add(s.room);
+    return s;
+  }
 }
 
 // ═══════════════════════════════════════════════════
@@ -84,7 +150,7 @@ const MAX_CARRY = 8;
 const PRAM_NOUNS = new Set(["pram", "perambulator", "carriage", "婴儿车", "推车", "车"]);
 
 export class GameEngine {
-  constructor({ rooms, items, parser, embedding, ui, chapterLoader, preloadedChapters }) {
+  constructor({ rooms, items, parser, embedding, ui, chapterLoader, preloadedChapters, onAutosave }) {
     this.rooms = rooms;
     this.items = items;
     this.parser = parser;
@@ -92,8 +158,79 @@ export class GameEngine {
     this.ui = ui;
     this.chapterLoader = chapterLoader || null;
     this.loadedChapters = new Set(preloadedChapters || ["prologue"]);
+    // 存档落盘由调用方注入。引擎自己不碰 localStorage，否则就有了 window
+    // 依赖，Node 下的通关测试会跑不起来（见 SHIP_PLAN 关键技术前提 2）。
+    this.onAutosave = typeof onAutosave === "function" ? onAutosave : null;
     this.state = new GameState();
     this._initItems();
+  }
+
+  // ── 存档 ──
+  serialize() {
+    return {
+      version: SAVE_VERSION,
+      savedAt: new Date().toISOString(),
+      state: this.state.serialize(),
+    };
+  }
+
+  // 读档。抛错即表示存档不可用，调用方应提示玩家并从头开始。
+  async deserialize(save) {
+    if (!save || typeof save !== "object" || !save.state) {
+      throw new Error("存档格式无法识别");
+    }
+    if (save.version !== SAVE_VERSION) {
+      throw new Error(`存档版本 ${save.version} 与当前版本 ${SAVE_VERSION} 不兼容`);
+    }
+    const data = save.state;
+    if (typeof data.room !== "string" || !data.room) {
+      throw new Error("存档缺少房间信息");
+    }
+
+    // 懒加载的章节必须先装载，否则读档后找不到房间。
+    // 不只装当前章节：chapter_<id>_entered 标志记录了走过的每一章，
+    // 全部装回来，跨章出口才不会指向空房间。
+    const chapters = new Set([data.chapter || "prologue"]);
+    for (const f of Array.isArray(data.flags) ? data.flags : []) {
+      const m = /^chapter_(.+)_entered$/.exec(f);
+      if (m) chapters.add(m[1]);
+    }
+    for (const id of chapters) {
+      const ok = await this.activateChapter(id);
+      if (!ok && !this.loadedChapters.has(id)) {
+        throw new Error(`章节「${id}」加载失败`);
+      }
+    }
+
+    if (!this.rooms[data.room]) {
+      throw new Error(`存档中的房间「${data.room}」不存在`);
+    }
+
+    const restored = GameState.deserialize(data);
+
+    // 存档之后 items.js 若新增了物品，旧存档里没有它们。用初始位置补齐，
+    // 存档里已有的位置优先，避免把玩家已拿到的东西塞回原处。
+    const base = {};
+    for (const [id, item] of Object.entries(this.items)) {
+      if (item.start) base[id] = item.start;
+    }
+    restored.itemLoc = { ...base, ...restored.itemLoc };
+
+    this.state = restored;
+    return true;
+  }
+
+  // 每回合结束调用。注意不走 moveTo/onEnter，读档只还原状态不重放副作用。
+  _autosave() {
+    if (!this.onAutosave) return;
+    // 死亡状态不写档。引擎目前没有重启逻辑（"输入任意内容重新开始" 是空头
+    // 支票），存下死局会让刷新后永远卡死。不写档 = 刷新回到死前一回合。
+    if (this.state.dead) return;
+    try {
+      this.onAutosave(this.serialize());
+    } catch (err) {
+      console.error("自动存档失败", err);
+    }
   }
 
   _initItems() {
@@ -352,6 +489,8 @@ export class GameEngine {
     if (this.state.dead) {
       this.ui.system("\n你死了。\n\n输入任意内容重新开始。");
     }
+
+    this._autosave();
   }
 
   // ── Generic actions ──
