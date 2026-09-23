@@ -161,8 +161,17 @@ export class GameEngine {
     // 存档落盘由调用方注入。引擎自己不碰 localStorage，否则就有了 window
     // 依赖，Node 下的通关测试会跑不起来（见 SHIP_PLAN 关键技术前提 2）。
     this.onAutosave = typeof onAutosave === "function" ? onAutosave : null;
+    // 计时器回调按 id 登记。存档存不下函数，读档时靠这张表把 perTurn 装回去。
+    this.timerHandlers = new Map();
     this.state = new GameState();
     this._initItems();
+  }
+
+  // 章节模块通过 export const TIMERS 提供回调，装载时登记进来。
+  registerTimerHandlers(timers) {
+    for (const [id, fn] of Object.entries(timers || {})) {
+      if (typeof fn === "function") this.timerHandlers.set(id, fn);
+    }
   }
 
   // ── 存档 ──
@@ -215,6 +224,13 @@ export class GameEngine {
       if (item.start) base[id] = item.start;
     }
     restored.itemLoc = { ...base, ...restored.itemLoc };
+
+    // 把计时器回调装回去。章节已在上面装载完毕，注册表这时才是全的。
+    // 找不到对应 id 时 perTurn 保持 null，_postTurn 里有判空保护：
+    // 计时器照常倒数，只是不再有每回合的副作用。
+    if (restored.timer && this.timerHandlers.has(restored.timer.id)) {
+      restored.timer.perTurn = this.timerHandlers.get(restored.timer.id);
+    }
 
     this.state = restored;
     return true;

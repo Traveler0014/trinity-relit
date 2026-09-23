@@ -68,8 +68,8 @@
 
 （任一 agent 在工作中发现的、超出自己任务范围的问题记在这里，由人类决定如何处理）
 
-- **计时器回调跨不过读档**（T2 发现，已知限制）。`state.timer.perTurn` 是章节数据里的闭包，JSON 存不下。存档只带走 `{remaining, id}`，读档后计时器照常倒数但回调不再触发——影响 `prologue.js` 的 doomsday 临近警告与 `pacific.js` 的七分钟超时提示。
-  修法：engine 加 `registerTimerHandler(id, fn)` 注册表，`prologue.js` / `pacific.js` 各加约 4 行按 id 注册回调。约 8 行增量改动，但要动两个章节文件，超出 T2 的「涉及文件」范围，故未做。
+- ~~**计时器回调跨不过读档**~~（T2 发现，**已于 2026-09-23 经人类授权修复**）。`state.timer.perTurn` 是闭包，JSON 存不下。解法：章节模块用 `export const TIMERS` 在模块层导出回调，引擎用 `registerTimerHandlers()` 按 id 登记，读档时装回。`prologue.js` / `pacific.js` 已改（超出 T2 原定「涉及文件」范围，已获授权）。
+  **新章节若要用计时器，回调必须写进该章的 `TIMERS` 导出**，不能再写成 `startTimer` 的内联闭包，否则读档后失效。`CHAPTER_RULES.md` 尚未记这条，建议补。
 - **开局房间的 `onEnter` 从不触发**（T2 发现，既有行为）。`main.js` 的 boot 用 `describeRoom()` 而非 `moveTo()` 进入首个房间，因此 `palace_gate.onEnter` 里启动 doomsday 计时器的那段，只有在玩家离开 Palace Gate 后再走回来时才会执行。读档路径沿用了同样的语义（读档只还原状态、不重放 `onEnter` 副作用）。若这是 bug，修它会改变开局节奏，需要通关测试兜底后再动。
 - **死亡后没有重启逻辑**（T2 发现，既有缺陷）。`engine.js` 里「输入任意内容重新开始」是空头支票，全仓库没有任何重启实现。T2 绕开的方式是：死亡状态不写存档（刷新即回到死前一回合）+ 头部提供「重新开始」按钮。引擎层的缺口仍在。
 - **存档往返自检应补进 `tests/`**（T2 发现）。T2 期间用 scratchpad 里的临时脚本验证了 7 项（往返一致、读档后可继续、懒加载章节可读档、4 类坏存档被拒、死亡不写档），但 `tests/` 是 T1 的范围，没有入库。T1 合并后建议补一个 `tests/save.test.js`。

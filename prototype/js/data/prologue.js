@@ -76,6 +76,17 @@ function doomTick(s, eng) {
   }
 }
 
+// 计时器回调按 id 导出。存档只能带走 { remaining, id }，函数存不进 JSON，
+// 读档时引擎靠这张表把回调装回去（见 engine.registerTimerHandlers）。
+export const TIMERS = {
+  doomsday(s, eng) {
+    if (s.hasFlag("at_long_water") || s.hasFlag("prologue_done")) return;
+    if (s.timer && s.timer.remaining <= 10) {
+      doomTick(s, eng);
+    }
+  },
+};
+
 export const ROOMS = {
 
   // ─── 1. Palace Gate ───
@@ -98,12 +109,7 @@ export const ROOMS = {
     onEnter(s, eng) {
       if (!s.hasFlag("palace_gate_visited")) {
         s.setFlag("palace_gate_visited");
-        s.startTimer(80, "doomsday", (st, en) => {
-          if (st.hasFlag("at_long_water") || st.hasFlag("prologue_done")) return;
-          if (st.timer && st.timer.remaining <= 10) {
-            doomTick(st, en);
-          }
-        });
+        s.startTimer(80, "doomsday", TIMERS.doomsday);
       }
     },
 

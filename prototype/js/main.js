@@ -6,7 +6,7 @@ import { GameEngine, SAVE_VERSION } from "./engine.js";
 import { Parser } from "./parser.js";
 import { ui } from "./ui.js";
 import { ITEMS } from "./data/items.js";
-import { ROOMS as PROLOGUE } from "./data/prologue.js";
+import { ROOMS as PROLOGUE, TIMERS as PROLOGUE_TIMERS } from "./data/prologue.js";
 
 // 按章节注册房间。preload: true 的章节随首屏加载；
 // 其余章节通过 loader 函数懒加载（动态 import）。
@@ -130,6 +130,9 @@ async function boot() {
       if (ch.loader) {
         const mod = await ch.loader();
         ch.rooms = mod.ROOMS || null;
+        // 章节自带的计时器回调，读档时引擎要按 id 取回。
+        // 返回值仍只是 rooms，不改 chapterLoader 的契约。
+        if (mod.TIMERS) engine.registerTimerHandlers(mod.TIMERS);
         return ch.rooms;
       }
       return null;
@@ -138,6 +141,9 @@ async function boot() {
     // 每回合结束由引擎回调，引擎自己不认识 localStorage。
     onAutosave: (save) => saveStore.write(save),
   });
+
+  // prologue 是预加载的，不经过 chapterLoader，它的计时器要在这里登记。
+  engine.registerTimerHandlers(PROLOGUE_TIMERS);
 
   ui.hideLoading();
 
