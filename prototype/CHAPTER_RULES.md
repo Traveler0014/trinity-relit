@@ -85,6 +85,11 @@ export const ROOMS = {
   room_id_1: { /* ... */ },
   room_id_2: { /* ... */ },
 };
+
+// 可选。只有本章用到计时器时才需要，见 §6「计时器回调必须模块层导出」。
+export const TIMERS = {
+  timer_id(s, eng) { /* ... */ },
+};
 ```
 
 **命名规则**：
@@ -193,6 +198,8 @@ room_id: {
 **分数**：`s.addScore(pts)`
 
 **计时器**：`s.startTimer(turns, id, perTurnCb)` / `s.tickTimer()` / `s.clearTimer()`
+
+> `perTurnCb` **必须**取自本章的 `TIMERS` 导出，不能写成内联闭包。原因见 §6。
 
 **属性**：`s.room`（当前房间ID）/ `s.turns`（回合数）/ `s.dead`（是否死亡）/ `s.chapter`（当前章节）
 
@@ -306,6 +313,40 @@ exits(s) {
 }
 ```
 
+### 计时器回调必须模块层导出
+
+存档存不下函数。`state.timer` 落盘时只带走 `{ remaining, id }`，读档时引擎
+按 `id` 去该章的 `TIMERS` 导出里把回调取回来（`engine.registerTimerHandlers`）。
+
+写成内联闭包不会报错，也不会被 `npm run verify` 抓到——玩家刷新页面之前
+一切正常，刷新之后计时器照常倒数，但每回合的副作用**静默消失**。
+
+```javascript
+// ❌ 错误：内联闭包。刷新页面后这段再也不会执行
+onEnter(s, eng) {
+  s.startTimer(80, "doomsday", (st, en) => {
+    if (st.timer && st.timer.remaining <= 10) doomTick(st, en);
+  });
+}
+
+// ✅ 正确：回调放进模块层的 TIMERS，startTimer 只引用它
+export const TIMERS = {
+  doomsday(s, eng) {
+    if (s.timer && s.timer.remaining <= 10) doomTick(s, eng);
+  },
+};
+
+onEnter(s, eng) {
+  s.startTimer(80, "doomsday", TIMERS.doomsday);
+}
+```
+
+`TIMERS` 的键名必须与 `startTimer` 的第二个参数一致，引擎就是靠它配对的。
+键名在整个游戏中唯一（同房间 ID 一样跨章节不能重复）。
+
+新章节除了导出 `TIMERS`，不需要做别的：预加载章节由 `main.js` 在启动时登记，
+懒加载章节由 `chapterLoader` 在装载时登记，两条路径都已接好。
+
 ### 物品引用
 
 ```javascript
@@ -396,3 +437,4 @@ async act(s, eng) {
 - [ ] **引号安全**：不存在未转义的中文引号在 JS 双引号字符串内
 - [ ] **onTurn 房间守卫**：所有 onTurn 都以 `if (s.room !== "xxx") return;` 开头
 - [ ] **事件 ID 唯一**：同一房间内所有事件 ID 不重复
+- [ ] **计时器回调已导出**：若本章用了 `startTimer`，回调必须取自本章 `TIMERS` 导出，不是内联闭包（§6）
