@@ -29,7 +29,8 @@ const CHAPTER_REGISTRY = new Map(CHAPTERS.map((c) => [c.id, c]));
 // 判定必须是 preload === true，不能写成 preload !== false。
 // 懒加载章节根本没有 preload 字段，undefined !== false 为真，会把 11 章全部
 // 算进 PRELOADED_CHAPTERS；引擎据此认为它们都已装载，activateChapter 于是
-// 直接返回 true、loader 一次都不调用，章节房间永远进不到 rooms 里。
+// 直接返回 true、loader 一次都不调用，房间永远进不到 rooms 里。表现为章节
+// 切换时进不去，以及懒加载章节的存档读档报「房间不存在」。
 const PRELOADED = CHAPTERS.filter((c) => c.preload === true);
 const PRELOADED_CHAPTERS = PRELOADED.map((c) => c.id);
 

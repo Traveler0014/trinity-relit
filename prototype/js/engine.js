@@ -99,10 +99,9 @@ export class GameState {
       maxScore: this.maxScore,
       turns: this.turns,
       chapter: this.chapter,
-      // timer.perTurn 是章节数据里的闭包，无法序列化，只带走倒数和 id。
-      // 后果：读档后计时器照常倒数，但每回合回调不再触发（doomsday 的
-      // 临近警告、太平洋七分钟的超时提示）。要修复需要章节文件按 id
-      // 注册回调，那超出了本次改动的文件范围，已登记在 TASKS.md。
+      // timer.perTurn 是函数，JSON 存不下，只带走倒数和 id。
+      // 回调本身不会丢：章节模块用 export const TIMERS 在模块层导出，
+      // 引擎按 id 登记（registerTimerHandlers），deserialize 再按 id 装回。
       timer: this.timer ? { remaining: this.timer.remaining, id: this.timer.id } : null,
       visited: [...this.visited],
       flipped: this.flipped,
