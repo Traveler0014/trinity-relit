@@ -15,6 +15,8 @@ const DIR_CORE = {
   sw: ["sw","southwest","西南"],
   u: ["u","up","上"],
   d: ["d","down","下"],
+  in: ["in","inside","里","里面","进入"],
+  out: ["out","outside","外","外面","出去"],
 };
 
 const DIR_MAP = {};
