@@ -29,6 +29,7 @@ jobs:
         with:
           node-version: '22'
       # 无运行时依赖，不需要 npm ci
+      - run: npm test
       - run: npm run verify
       # verify:exits 需要 scripts/exit_truth.json，它派生自受版权保护的
       # TRINITY.DAT 因而不入库，只能本地运行。见 SHIP_PLAN.md 阶段 0.5。

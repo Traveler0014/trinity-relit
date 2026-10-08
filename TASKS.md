@@ -16,8 +16,8 @@
 ## 进行中
 
 ### T1 阶段 2：通关测试 — Codex
-- 分支：`codex/walkthrough-test`
-- 状态：⬜
+- 分支：`codex/integrate-claude-tests`
+- 状态：👀（本地整合与验证完成，尚未合并 main）
 - 涉及文件：新建 `tests/`（`harness.js`、`walkthrough.test.js`、`graph.test.js`）、`package.json`（仅添加 `test` 脚本）、`.github/workflows/deploy.yml`（仅在 check job 中添加 `npm test` 一步）
 - **不得修改**：`prototype/` 下任何文件。测试暴露出的缺陷记录在下方「发现的问题」，不要顺手修。
 - 说明：CI 已存在于 `deploy.yml` 的 check job，扩展它即可，不要另建 `check.yml`。详见 `SHIP_PLAN.md` 阶段 2。
@@ -78,3 +78,14 @@
 - **开局房间的 `onEnter` 从不触发**（T2 发现，既有行为）。`main.js` 的 boot 用 `describeRoom()` 而非 `moveTo()` 进入首个房间，因此 `palace_gate.onEnter` 里启动 doomsday 计时器的那段，只有在玩家离开 Palace Gate 后再走回来时才会执行。读档路径沿用了同样的语义（读档只还原状态、不重放 `onEnter` 副作用）。若这是 bug，修它会改变开局节奏，需要通关测试兜底后再动。
 - **死亡后没有重启逻辑**（T2 发现，既有缺陷）。`engine.js` 里「输入任意内容重新开始」是空头支票，全仓库没有任何重启实现。T2 绕开的方式是：死亡状态不写存档（刷新即回到死前一回合）+ 头部提供「重新开始」按钮。引擎层的缺口仍在。
 - **存档往返自检应补进 `tests/`**（T2 发现）。T2 期间用 scratchpad 里的临时脚本验证了 7 项（往返一致、读档后可继续、懒加载章节可读档、4 类坏存档被拒、死亡不写档），但 `tests/` 是 T1 的范围，没有入库。T1 合并后建议补一个 `tests/save.test.js`。
+
+## 2026-10-08 Codex 整合验收
+
+- 新分支以 `claude/cleanup-and-decisions` 为基础，合入 `claude/save-system`；旧 Codex 分支完整保留，没有整体合入。
+- T1 拆入测试与既有 deploy.yml 的测试步骤；测试装配留在 tests/，没有引入 chapters.mjs 或 contextual-intent.js 到运行时。
+- 人类本轮明确授权：修复 parser 的 in/out 及中文别名。首次测试在 Wabe 复现阻断，补两条 DIR_CORE 后完整通关。
+- `npm test`：22/22，199 回合、73 房间、21/100 分；`npm run verify` 通过。
+- 存档测试覆盖 JSON 往返、继续输入、懒加载、坏档拒绝、自动保存和死亡保护；另执行真实 main.js（只替换 UI 边界），验证 Pacific 续玩后的回调登记与到期副作用。尚未做本轮浏览器导出/导入交互验收。
+- 临时副本中断开 Japan 蘑菇门，通关测试按预期失败。出口旧检查仍为 115 项；章节出口未改动。Claude 静态反汇编的更完整偏差统计仍应作为后续地图修复依据。
+- 旧分支待单独提案：情境意图模块及 engine 接线；parser 其他语义与事件匹配改动；双语审查/转录/旧 CLI 改动。不因本次整合自动恢复。
+- 本地完成不等于远端验收：尚未推送、开 PR 或部署，T2 文件锁保持原登记。
