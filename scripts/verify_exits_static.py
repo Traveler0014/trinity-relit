@@ -98,7 +98,7 @@ for ch in CH:
     ids = [r for r, c in room_ch.items() if c == ch]
     mapped = [r for r in ids if r in id2obj and str(id2obj[r]) in t]
     s = dict(房间=len(ids),已映射=len(mapped),一致=0,缺失=0,目标不同=0,凭空=0,条件=0,无法比对=0)
-    det = {'目标不同': [], '缺失': [], '凭空': []}
+    det = {'目标不同': [], '缺失': [], '凭空': [], '未映射目标': []}
     for rid in mapped:
         real, im = real_exits(id2obj[rid]), impl.get(rid, {})
         for d, v in real.items():
@@ -109,8 +109,12 @@ for ch in CH:
                 continue
             tgt = obj2id.get(v[1])
             if tgt is None:
-                if iv: s['无法比对'] += 1
-                else: s['缺失'] += 1; det['缺失'].append(f"{rid} --{d}--> {t.get(str(v[1]),{}).get('name','obj'+str(v[1]))}")
+                # 目标没有实现 ID 时（例如 Ranch 的 Front Deck #6 和 Desert
+                # 通配房间），无法判断缺失的是出口还是目标房间；单列为无法比对。
+                s['无法比对'] += 1
+                det['未映射目标'].append(
+                    f"{rid} --{d}--> #{v[1]} {t.get(str(v[1]), {}).get('name', 'unknown')}"
+                )
             elif not iv: s['缺失'] += 1; det['缺失'].append(f"{rid} --{d}--> {tgt}")
             elif iv == tgt: s['一致'] += 1
             else: s['目标不同'] += 1; det['目标不同'].append(f"{rid} --{d}--> 真机 {tgt} / 实现 {iv}")
@@ -120,7 +124,7 @@ for ch in CH:
     for k in tot: tot[k] += s[k]
 
 if args.json: json.dump({'rows': rows, 'details': details}, open(args.json, 'w'), ensure_ascii=False, indent=1)
-print(f"{'章节':<12}{'房间':>4}{'已映射':>6} │{'一致':>5}{'缺失':>5}{'目标错':>6}{'凭空':>5} │{'条件':>4}{'无法比':>6} │ 可通行一致率")
+print(f"{'章节':<12}{'房间':>4}{'已映射':>6} │{'一致':>5}{'缺失':>5}{'目标错':>6}{'凭空':>5} │{'条件':>4}{'无法比':>6} │ 可比出口一致率")
 print('─'*84)
 for ch, s in rows + [('合计', tot)]:
     denom = s['一致'] + s['缺失'] + s['目标不同']

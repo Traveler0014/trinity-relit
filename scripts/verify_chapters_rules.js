@@ -103,9 +103,10 @@ const ONE_WAY_EXITS = new Set([
   "desert_4:s:foothills_2", "desert_7:s:foothills_3",
   "tower_landing:u:tower_platform",
   "outside_blockhouse:w:sw_of_tower", "behind_shed:n:paved_road_1",
-  // Ranch（主线）：前院/走廊/组装室/厨房/后院单向或骨架简化；风车下仅上通
-  "front_yard:in:hallway", "hallway:n:nw_ranch", "assembly_room:e:front_yard",
-  "kitchen:n:assembly_room", "back_yard:n:hallway", "edge_reservoir:u:windmill",
+  // Ranch：原版反汇编确认的单向或 in/out 别名出口。
+  "closet:out:assembly_room", "sw_yard:in:hallway", "ne_yard:in:bedroom",
+  "bathroom:in:spare_room", "bathroom:out:spare_room", "bedroom:in:spare_room",
+  "icehouse:out:hallway", "reservoir:u:edge_reservoir", "windmill:out:under_windmill",
   // Cemetery 在原版里没有任何已解析出口指向它，入口藏在未反汇编的 routine 中。
   // 这对出口是补救路径，否则 Barrow 与 Ossuary 蘑菇门（Underground 章节入口）
   // 完全不可达。几何上不自洽（南进南出），定位到真实入口后应一并替换。
