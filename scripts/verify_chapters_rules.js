@@ -107,6 +107,11 @@ const ONE_WAY_EXITS = new Set([
   "closet:out:assembly_room", "sw_yard:in:hallway", "ne_yard:in:bedroom",
   "bathroom:in:spare_room", "bathroom:out:spare_room", "bedroom:in:spare_room",
   "icehouse:out:hallway", "reservoir:u:edge_reservoir", "windmill:out:under_windmill",
+  // Front Deck #6：原版出口属性本身不成几何逆向；SW/NW 是带门对象的
+  // 6 字节出口，W/IN 是由两扇门开关决定目标的例程。
+  "front_yard:in:front_deck", "front_deck:sw:se_room",
+  "front_deck:nw:assembly_room", "front_deck:in:assembly_room",
+  "se_room:e:front_deck", "ne_yard:u:front_deck", "se_yard:u:front_deck",
   // Cemetery 在原版里没有任何已解析出口指向它，入口藏在未反汇编的 routine 中。
   // 这对出口是补救路径，否则 Barrow 与 Ossuary 蘑菇门（Underground 章节入口）
   // 完全不可达。几何上不自洽（南进南出），定位到真实入口后应一并替换。

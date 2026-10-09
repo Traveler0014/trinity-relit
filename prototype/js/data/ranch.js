@@ -1,7 +1,6 @@
 // ═══════════════════════════════════════════════════
-//  McDonald Ranch — 26 个原有房间 ID，描述与内部出口按 TRINITY.DAT 重组。
-//  原版另有 Front Deck (#6)，当前 ID 集合没有对应项；涉及它的九条出口
-//  和未映射的 Desert / Foothills 边界暂列在 prototype/RANCH_REWRITE_GAPS.md。
+//  McDonald Ranch — 原有 26 个 ID 不变，另补原版 Front Deck (#6)。
+//  未映射的 Desert / Foothills 边界列在 prototype/RANCH_REWRITE_GAPS.md。
 // ═══════════════════════════════════════════════════
 
 // 阻挡原文均来自 TRINITY.DAT 的字符串或无条件出口例程。
@@ -22,6 +21,15 @@ const FAIL_TEXT = {
 };
 function blocked(room, reason) {
   return { to: room, when: () => false, fail: FAIL_TEXT[reason] };
+}
+
+// 原版 6 字节门出口先检查 #26/#39 的 open 属性，再送往目标房间。
+function deckDoor(target, flag, side) {
+  return {
+    to: target,
+    when: (s) => s.hasFlag(flag),
+    fail: `The ${side} door is closed.\n\n${side === "left" ? "左" : "右"}边的门关着。`,
+  };
 }
 
 export const ROOMS = {
@@ -66,9 +74,87 @@ export const ROOMS = {
         e: blocked("front_yard", "reservoir_wall"),
         sw: blocked("front_yard", "wall"),
         nw: blocked("front_yard", "wall"),
+        w: { to: "front_deck", text: "You ascend the ramp.\n\n你走上斜坡。" },
+        u: { to: "front_deck", text: "You ascend the ramp.\n\n你走上斜坡。" },
+        in: { to: "front_deck", text: "You ascend the ramp.\n\n你走上斜坡。" },
       };
     },
     events: [],
+  },
+
+  front_deck: {
+    name: "Front Deck",
+    cn: "前平台",
+    desc(s) {
+      const left = s.hasFlag("front_deck_left_door_open");
+      const right = s.hasFlag("front_deck_right_door_open");
+      const en = "You're on a raised deck attached to the east side of the ranch house. Two " +
+        (left && right ? "open " : !left && !right ? "closed " : "") +
+        "doors, " + (left === right ? "" : `a${left ? "n open" : " closed"} `) +
+        "one at the deck's left corner and " +
+        (left === right ? "" : `a${right ? "n open" : " closed"} `) +
+        "one at the right, lead inside. A gentle ramp slopes down to the front yard.";
+      const cn = "你站在牧场屋东侧的一处高起的平台上。两扇" +
+        (left && right ? "敞开的" : !left && !right ? "关闭的" : "") +
+        "门，一扇在平台左角" + (left === right ? "" : left ? "，开着" : "，关着") +
+        "，另一扇在右边" + (left === right ? "" : right ? "，开着" : "，关着") +
+        "，通往屋内。一道平缓的斜坡通向下面的前院。";
+      return en + "\n\n" + cn;
+    },
+    exits(s) {
+      const left = s.hasFlag("front_deck_left_door_open");
+      const right = s.hasFlag("front_deck_right_door_open");
+      const inside = {
+        to: left ? "se_room" : "assembly_room",
+        when: () => left !== right,
+        fail: left && right
+          ? "[Which way do you want to go in, northwest or southwest?]\n\n[你想从哪边进去，西北还是西南？]"
+          : "Both of the doors are closed.\n\n两扇门都关着。",
+        text: "You step inside the ranch house.\n\n你走进牧场屋。",
+      };
+      return {
+        n: { to: "ne_yard", text: "You climb off the deck.\n\n你从平台上下来。" },
+        ne: blocked("front_deck", "wall"),
+        e: { to: "front_yard", text: "You descend the ramp.\n\n你走下斜坡。" },
+        se: blocked("front_deck", "wall"),
+        s: { to: "se_yard", text: "You climb off the deck.\n\n你从平台上下来。" },
+        sw: deckDoor("se_room", "front_deck_left_door_open", "left"),
+        w: inside,
+        nw: deckDoor("assembly_room", "front_deck_right_door_open", "right"),
+        d: { to: "front_yard", text: "You descend the ramp.\n\n你走下斜坡。" },
+        in: inside,
+      };
+    },
+    events: [
+      {
+        id: "front_deck_open_left_door",
+        match: { verb: ["open"], noun: ["left door", "左门", "左边的门"] },
+        when: (s) => s.room === "front_deck" && !s.hasFlag("front_deck_left_door_open"),
+        act(s) { s.setFlag("front_deck_left_door_open"); },
+        text: "You open the left door.\n\n你打开左边的门。",
+      },
+      {
+        id: "front_deck_close_left_door",
+        match: { verb: ["close"], noun: ["left door", "左门", "左边的门"] },
+        when: (s) => s.room === "front_deck" && s.hasFlag("front_deck_left_door_open"),
+        act(s) { s.clearFlag("front_deck_left_door_open"); },
+        text: "You close the left door.\n\n你关上左边的门。",
+      },
+      {
+        id: "front_deck_open_right_door",
+        match: { verb: ["open"], noun: ["right door", "右门", "右边的门"] },
+        when: (s) => s.room === "front_deck" && !s.hasFlag("front_deck_right_door_open"),
+        act(s) { s.setFlag("front_deck_right_door_open"); },
+        text: "You open the right door.\n\n你打开右边的门。",
+      },
+      {
+        id: "front_deck_close_right_door",
+        match: { verb: ["close"], noun: ["right door", "右门", "右边的门"] },
+        when: (s) => s.room === "front_deck" && s.hasFlag("front_deck_right_door_open"),
+        act(s) { s.clearFlag("front_deck_right_door_open"); },
+        text: "You close the right door.\n\n你关上右边的门。",
+      },
+    ],
   },
 
   hallway: {
@@ -96,22 +182,41 @@ export const ROOMS = {
     cn: "组装室",
     desc(s) {
       const closed = s.hasFlag("closet_door_closed");
-      const en = "Whoever used this room was paranoid about dirt. The floor is swept spotless, and the edges of both windows are carefully sealed with tape. A closed front door leads east, and there's a" +
+      const frontOpen = s.hasFlag("front_deck_right_door_open");
+      const en = "Whoever used this room was paranoid about dirt. The floor is swept spotless, and the edges of both windows are carefully sealed with tape. A" +
+        (frontOpen ? "n open" : " closed") + " front door leads east, and there's a" +
         (closed ? " closed" : "n open closet") + " door in the north wall. Other exits lead south and west.";
-      const cn = "曾使用这间房的人对灰尘近乎偏执。地板被扫得一尘不染，两扇窗的边缘都仔细贴了胶带。一扇关闭的前门向东，北墙上还有一扇" +
+      const cn = "曾使用这间房的人对灰尘近乎偏执。地板被扫得一尘不染，两扇窗的边缘都仔细贴了胶带。一扇" +
+        (frontOpen ? "敞开的" : "关闭的") + "前门向东，北墙上还有一扇" +
         (closed ? "关闭的门" : "敞开的壁橱门") + "。其他出口通往南面和西面。";
       return en + "\n\n" + cn;
     },
     exits() {
       return {
         n: "closet",
+        e: "front_deck",
         s: "se_room",
         w: "nw_room",
         in: blocked("assembly_room", "in_ambiguous"),
         out: blocked("assembly_room", "out_ambiguous"),
       };
     },
-    events: [],
+    events: [
+      {
+        id: "assembly_open_front_door",
+        match: { verb: ["open"], noun: ["front door", "前门"] },
+        when: (s) => s.room === "assembly_room" && !s.hasFlag("front_deck_right_door_open"),
+        act(s) { s.setFlag("front_deck_right_door_open"); },
+        text: "You open the front door.\n\n你打开前门。",
+      },
+      {
+        id: "assembly_close_front_door",
+        match: { verb: ["close"], noun: ["front door", "前门"] },
+        when: (s) => s.room === "assembly_room" && s.hasFlag("front_deck_right_door_open"),
+        act(s) { s.clearFlag("front_deck_right_door_open"); },
+        text: "You close the front door.\n\n你关上前门。",
+      },
+    ],
   },
 
   closet: {
@@ -239,17 +344,36 @@ export const ROOMS = {
     name: "Southeast Room",
     cn: "东南房间",
     desc(s) {
-      return "Something about this room gives you the impression that it was hastily vacated. The front door in the east wall is closed. Other exits lead north and west.\n\n这间房给人一种匆忙撤离的感觉。东墙上的前门关着。其他出口通往北面和西面。";
+      const open = s.hasFlag("front_deck_left_door_open");
+      return "Something about this room gives you the impression that it was hastily vacated. The front door in the east wall is " +
+        (open ? "wide open" : "closed") + ". Other exits lead north and west.\n\n这间房给人一种匆忙撤离的感觉。东墙上的前门" +
+        (open ? "敞开着" : "关着") + "。其他出口通往北面和西面。";
     },
     exits() {
       return {
         n: "assembly_room",
+        e: "front_deck",
         w: "kitchen",
         in: blocked("se_room", "in_ambiguous"),
         out: blocked("se_room", "out_ambiguous"),
       };
     },
-    events: [],
+    events: [
+      {
+        id: "se_room_open_front_door",
+        match: { verb: ["open"], noun: ["front door", "前门", "door", "门"] },
+        when: (s) => s.room === "se_room" && !s.hasFlag("front_deck_left_door_open"),
+        act(s) { s.setFlag("front_deck_left_door_open"); },
+        text: "You open the front door.\n\n你打开前门。",
+      },
+      {
+        id: "se_room_close_front_door",
+        match: { verb: ["close"], noun: ["front door", "前门", "door", "门"] },
+        when: (s) => s.room === "se_room" && s.hasFlag("front_deck_left_door_open"),
+        act(s) { s.clearFlag("front_deck_left_door_open"); },
+        text: "You close the front door.\n\n你关上前门。",
+      },
+    ],
   },
 
   sw_yard: {
@@ -285,6 +409,8 @@ export const ROOMS = {
       return {
         w: "bedroom",
         in: "bedroom",
+        s: { to: "front_deck", text: "You stride onto the deck.\n\n你大步走上平台。" },
+        u: { to: "front_deck", text: "You stride onto the deck.\n\n你大步走上平台。" },
         n: blocked("ne_yard", "wall"),
         ne: blocked("ne_yard", "wall"),
         e: blocked("ne_yard", "wall"),
@@ -363,6 +489,8 @@ export const ROOMS = {
         se: "se_ranch",
         w: "sw_yard",
         out: "se_ranch",
+        n: { to: "front_deck", text: "You stride onto the deck.\n\n你大步走上平台。" },
+        u: { to: "front_deck", text: "You stride onto the deck.\n\n你大步走上平台。" },
         ne: blocked("se_yard", "wall"),
         e: blocked("se_yard", "wall"),
         s: blocked("se_yard", "wall"),

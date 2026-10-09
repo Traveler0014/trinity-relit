@@ -92,6 +92,6 @@
 
 ### T6 Ranch 出口与描述重写 — Codex（2026-10-09）
 - 分支：`claude/rewrite-ranch`（沿用现有独立工作树）
-- 状态：👀 待范围裁决及审查
-- 范围：保留 26 个原有房间 ID；重写 `prototype/js/data/ranch.js` 的出口、阻挡提示与描述；配套校验和缺口记录。
-- 当前：26/26 房间由玩家方向命令可达；静态出口已映射项 83/83 一致；7 条条件、37 条未映射目标单列。Front Deck #6 的九条边界出口待用户裁决。详见 `prototype/RANCH_REWRITE_GAPS.md`。
+- 状态：👀 本地计划与验证完成，待人类审查；未合并 `main`
+- 涉及文件：保留 26 个原有房间 ID；在 `prototype/js/data/ranch.js` 补原版 `front_deck`、静态出口、描述与可在本章表达的门状态；`tests/ranch-rewrite.test.mjs`、`scripts/verify_chapters_rules.js`（仅原版不对称出口白名单）、`prototype/CHAPTER_PLAN.md`、`prototype/RANCH_REWRITE_PLAN.md`、`prototype/RANCH_REWRITE_GAPS.md`、本文件和 `SHIP_PLAN.md`。
+- 当前：27/27 房间由玩家方向命令可达；静态出口已映射项 98/98 一致；9 条条件方向与 28 条跨章未映射目标单列。两扇平台门与室内前门同步并经存档测试。逐项证据与未完成条件见 `prototype/RANCH_REWRITE_PLAN.md`，不把 98/98 解释为全章机制已还原。
