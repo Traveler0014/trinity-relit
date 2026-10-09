@@ -47,7 +47,7 @@ test("从宫殿门经过六扇蘑菇门、牧场，剪线后回到开局", async
     await act("unscrew gnomon");
     await act("take gnomon"); has("gnomon");
     await walk("round_pond");
-    await act("take paper bird"); has("paper_bird");
+    await act("捡起折纸鸟"); has("paper_bird");
     await act("open paper bird"); flag("bird_unfolded");
     await walk("broad_walk");
     await act("buy crumbs"); has("bag");
