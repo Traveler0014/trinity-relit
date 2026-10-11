@@ -52,7 +52,7 @@ export const ITEMS = {
     start: null,
   },
   paper_bird: {
-    cn: "纸鸟", aliases: ["paper bird","paper","bird","纸鸟","纸鹤","折纸","纸"],
+    cn: "纸鸟", aliases: ["paper bird","paper","bird","纸鸟","折纸鸟","纸鹤","折纸","纸"],
     desc(s) { return s.hasFlag("bird_unfolded") ? 'The words "Long Water, Four O\'Clock" are scrawled on the piece of paper.\n纸上潦草地写着"Long Water, Four O\'Clock"。' : "A folded paper bird.\n一只折纸鸟。"; },
     start: "round_pond",
     roomDesc: "",

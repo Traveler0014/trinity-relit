@@ -19,7 +19,7 @@
 | 7 | `tundra` | Russian Tundra（苏联冻原） | 11 | ✅ 完成 | wabe |
 | 8 | `islet` | Islet（过渡小岛） | 2 | ✅ 完成 | wabe |
 | 9 | `desert` | New Mexico Desert + Tower | 34 | ✅ 完成 | islet |
-| 10 | `ranch` | McDonald Ranch（牧场） | 25 | ✅ 完成 | desert |
+| 10 | `ranch` | McDonald Ranch（牧场） | 27 | 🔨 原版复核中 | desert |
 | 11 | `finale` | Finale（终章） | ~3 | ✅ 完成 | ranch |
 
 **总计：约 130 个房间**
@@ -28,7 +28,7 @@
 
 1. **先枢纽后分支**：先完成 The Wabe（所有蘑菇门的起点），再开发各分支
 2. **先小后大**：Japan (2) → Underground (3) → Orbit (2) → Pacific (7) → Tundra (11)
-3. **最后主线**：Islet → Desert (34) → Ranch (25) → Finale
+3. **最后主线**：Islet → Desert (34) → Ranch (27) → Finale
 4. 每完成一个章节，立即做完整性验证，再进入下一个
 
 ---
@@ -393,7 +393,7 @@
 ## 章节 10：McDonald Ranch（牧场）
 
 **文件**：`prototype/js/data/ranch.js`
-**房间数**：25
+**房间数**：27（原有 26 个 ID + 原版 Front Deck #6）
 **优先级**：🟠 高（主线结局的一部分）
 
 ### 房间列表（关键房间）
@@ -414,6 +414,7 @@
 | 477 | `se_yard` | Southeast Yard | 东南院子 |
 | 297 | `back_yard` | Back Yard | 后院 |
 | 573 | `front_yard` | Front Yard | 前院 |
+| 6 | `front_deck` | Front Deck | 前平台 |
 | 345 | `icehouse` | Icehouse | 冰库 |
 | 122 | `nw_ranch` | Northwest of Ranch | 牧场西北 |
 | 372 | `se_ranch` | Southeast of Ranch | 牧场东南 |
@@ -593,5 +594,5 @@
 - [x] Chapter 7: Russian Tundra — 2026-03-10（11 房间 + 悬崖裂缝旅鼠+笼子）
 - [x] Chapter 8: Islet — 2026-03-10（2 房间 + 白门→Desert）
 - [x] Chapter 9: New Mexico Desert — 2026-03-10（34 房间：tower_landing/paved_road×6/desert×9/foothills×3/shallow_crater + 剪线→Prologue）
-- [x] Chapter 10: McDonald Ranch — 2026-03-10（25 房间：bathroom/bedroom/se_yard/icehouse/se_sw_ne_ranch/under_windmill/south_reservoir + 与 Desert 连通）
+- [ ] Chapter 10: McDonald Ranch — 原有 26 个 ID 已保留，补原版 Front Deck #6；按 `RANCH_REWRITE_PLAN.md` 复核出口、描述及条件机制
 - [x] Chapter 11: Finale — 2026-03-10（the_end 房间；剪线后直接 transitionChapter 回 Palace Gate）

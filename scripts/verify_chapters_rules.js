@@ -103,9 +103,15 @@ const ONE_WAY_EXITS = new Set([
   "desert_4:s:foothills_2", "desert_7:s:foothills_3",
   "tower_landing:u:tower_platform",
   "outside_blockhouse:w:sw_of_tower", "behind_shed:n:paved_road_1",
-  // Ranch（主线）：前院/走廊/组装室/厨房/后院单向或骨架简化；风车下仅上通
-  "front_yard:in:hallway", "hallway:n:nw_ranch", "assembly_room:e:front_yard",
-  "kitchen:n:assembly_room", "back_yard:n:hallway", "edge_reservoir:u:windmill",
+  // Ranch：原版反汇编确认的单向或 in/out 别名出口。
+  "closet:out:assembly_room", "sw_yard:in:hallway", "ne_yard:in:bedroom",
+  "bathroom:in:spare_room", "bathroom:out:spare_room", "bedroom:in:spare_room",
+  "icehouse:out:hallway", "reservoir:u:edge_reservoir", "windmill:out:under_windmill",
+  // Front Deck #6：原版出口属性本身不成几何逆向；SW/NW 是带门对象的
+  // 6 字节出口，W/IN 是由两扇门开关决定目标的例程。
+  "front_yard:in:front_deck", "front_deck:sw:se_room",
+  "front_deck:nw:assembly_room", "front_deck:in:assembly_room",
+  "se_room:e:front_deck", "ne_yard:u:front_deck", "se_yard:u:front_deck",
   // Cemetery 在原版里没有任何已解析出口指向它，入口藏在未反汇编的 routine 中。
   // 这对出口是补救路径，否则 Barrow 与 Ossuary 蘑菇门（Underground 章节入口）
   // 完全不可达。几何上不自洽（南进南出），定位到真实入口后应一并替换。
@@ -246,11 +252,96 @@ for (const filename of chapterFiles) {
   if (!hasChinese || !hasDesc) fail("描述格式", "章节应有 desc 且含中文翻译", filename, null);
 }
 
+// 计时器回调必须取自本章的 TIMERS 导出（CHAPTER_RULES §6）。
+// 内联闭包不会报错、也不影响当前这局游戏，但存档存不下函数：玩家刷新
+// 页面后计时器照常倒数，每回合的副作用却静默消失。这类只在读档后才暴露
+// 的问题正是静态检查该拦的。
+
+// 从 "startTimer(" 之后按顶层逗号切出参数，括号、花括号与字符串内的逗号不算。
+function splitArgs(code, start) {
+  const args = [];
+  let depth = 0, quote = null, cur = "", i = start;
+  for (; i < code.length; i++) {
+    const c = code[i];
+    if (quote) {
+      cur += c;
+      if (c === "\\") { cur += code[++i] || ""; continue; }
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") { quote = c; cur += c; continue; }
+    if ("([{".includes(c)) { depth++; cur += c; continue; }
+    if (")]}".includes(c)) {
+      if (c === ")" && depth === 0) { args.push(cur.trim()); return args; }
+      depth--; cur += c; continue;
+    }
+    if (c === "," && depth === 0) { args.push(cur.trim()); cur = ""; continue; }
+    cur += c;
+  }
+  return null; // 括号没闭合
+}
+
+const timerIdOwner = new Map();
+for (const filename of chapterFiles) {
+  const code = fs.readFileSync(path.join(DATA, filename), "utf8");
+
+  // 本章 TIMERS 导出里声明了哪些键
+  const exported = new Set();
+  const exportBlock = /export\s+const\s+TIMERS\s*=\s*\{/.exec(code);
+  if (exportBlock) {
+    const region = code.slice(exportBlock.index, code.indexOf("\n};", exportBlock.index) + 3);
+    for (const km of region.matchAll(/^\s{2}([A-Za-z_$][\w$]*)\s*[(:]/gm)) exported.add(km[1]);
+  }
+
+  const re = /startTimer\s*\(/g;
+  let m;
+  while ((m = re.exec(code)) !== null) {
+    const line = code.slice(0, m.index).split("\n").length;
+    const args = splitArgs(code, m.index + m[0].length);
+    if (!args || args.length < 3) {
+      fail("计时器回调", `startTimer 参数解析失败或不足 3 个`, filename, line);
+      continue;
+    }
+    const idLit = /^(["'])([^"']+)\1$/.exec(args[1]);
+    if (!idLit) {
+      fail("计时器回调", `startTimer 的 id 必须是字符串字面量，当前为 ${args[1]}`, filename, line);
+      continue;
+    }
+    const id = idLit[2];
+
+    // id 全局唯一：引擎的回调注册表是跨章节共用的一张表
+    const owner = timerIdOwner.get(id);
+    if (owner && owner !== filename) {
+      fail("计时器回调", `计时器 id "${id}" 在 ${owner} 中已被使用，跨章节不能重复`, filename, line);
+    } else {
+      timerIdOwner.set(id, filename);
+    }
+
+    const ref = /^TIMERS\.([A-Za-z_$][\w$]*)$/.exec(args[2]);
+    if (!ref) {
+      fail(
+        "计时器回调",
+        `第 3 个参数必须写成 TIMERS.${id}（回调要能在读档后按 id 取回），当前为 ${args[2].split("\n")[0].slice(0, 40)}…`,
+        filename,
+        line
+      );
+      continue;
+    }
+    if (ref[1] !== id) {
+      fail("计时器回调", `TIMERS.${ref[1]} 与 id "${id}" 不一致，引擎靠这两者配对`, filename, line);
+      continue;
+    }
+    if (!exported.has(id)) {
+      fail("计时器回调", `本章的 export const TIMERS 中没有 ${id}`, filename, line);
+    }
+  }
+}
+
 // 报告
 console.log("=== CHAPTER_RULES 符合性检查 ===\n");
 if (issues.length === 0) {
   console.log("全部检查通过。");
-  console.log("\n§10 清单: 语法、出口联通、双向出口、物品交叉引用、引号安全、onTurn守卫、事件ID唯一 均已通过。");
+  console.log("\n§10 清单: 语法、出口联通、双向出口、物品交叉引用、引号安全、onTurn守卫、事件ID唯一、计时器回调 均已通过。");
   console.log("说明: 单向出口白名单见脚本内 ONE_WAY_EXITS；Z-machine 一致性需结合 zparse 数据人工核对。");
   process.exit(0);
 }

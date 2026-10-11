@@ -15,6 +15,8 @@ const DIR_CORE = {
   sw: ["sw","southwest","西南"],
   u: ["u","up","上"],
   d: ["d","down","下"],
+  in: ["in","inside","里","里面","进入"],
+  out: ["out","outside","外","外面","出去"],
 };
 
 const DIR_MAP = {};
@@ -71,7 +73,7 @@ const VERB_EN = new Set([
   "push","pull","turn","read","wear","remove","throw","give","cut",
   "set","enter","climb","ride","search","feed","buy","fold","point",
   "unscrew","unlock","pour","show","hit","break","chop","kill",
-  "wait","sit","enter","exit","wave","blow","smell",
+  "wait","sit","enter","exit","wave","blow","smell","help","hold",
 ]);
 
 const PREPS = new Set([
@@ -130,6 +132,9 @@ export class Parser {
     if (!VERB_EN.has(verb)) return null;
     if (words.length === 1) return { type: "simple", verb, noun: null };
 
+    // 冠词只在名词短语开头省略，不删掉物品名称中间的词。
+    const nounPhrase = tokens => tokens.join(" ").replace(/^(?:the|an|a)\s+/, "");
+
     // Find preposition
     let prepIdx = -1;
     for (let i = 2; i < words.length; i++) {
@@ -137,13 +142,13 @@ export class Parser {
     }
 
     if (prepIdx > 0) {
-      const noun = words.slice(1, prepIdx).join(" ");
+      const noun = nounPhrase(words.slice(1, prepIdx));
       const prep = words[prepIdx];
-      const noun2 = words.slice(prepIdx + 1).join(" ");
+      const noun2 = nounPhrase(words.slice(prepIdx + 1));
       return { type: "compound", verb, noun, prep, noun2: noun2 || null };
     }
 
-    const noun = words.slice(1).join(" ");
+    const noun = nounPhrase(words.slice(1));
     return { type: "simple", verb, noun };
   }
 

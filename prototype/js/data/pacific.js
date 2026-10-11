@@ -4,6 +4,16 @@
 //  All English text from original Infocom Trinity (1986).
 // ═══════════════════════════════════════════════════
 
+// 计时器回调按 id 导出，读档后由引擎装回。理由同 prologue.js。
+export const TIMERS = {
+  pacific_switch(s, eng) {
+    if (s.timer && s.timer.remaining <= 0) {
+      s.setFlag("pacific_timer_expired");
+      eng.print("Seven minutes have passed. You were too late.\n\n七分钟已过。你来不及了。");
+    }
+  },
+};
+
 export const ROOMS = {
 
   // ─── 1. Mesa (obj#76) — entry from Wabe Chasm's Brink ───
@@ -102,12 +112,7 @@ export const ROOMS = {
         when: (s) => s.room === "bottom_scaffold" && s.hasFlag("pacific_box_open") && !s.hasFlag("pacific_switch_pushed"),
         act(s) {
           s.setFlag("pacific_switch_pushed");
-          s.startTimer(7, "pacific_switch", (st, eng) => {
-            if (st.timer && st.timer.remaining <= 0) {
-              st.setFlag("pacific_timer_expired");
-              eng.print("Seven minutes have passed. You were too late.\n\n七分钟已过。你来不及了。");
-            }
-          });
+          s.startTimer(7, "pacific_switch", TIMERS.pacific_switch);
         },
         text: "You push the switch. You have seven minutes to push the button.\n\n你按下开关。你有七分钟时间按下按钮。",
       },

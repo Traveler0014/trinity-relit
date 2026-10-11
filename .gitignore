@@ -12,6 +12,7 @@ $DOCS.zip
 trinity_objects.json
 trinity_strings.json
 trinity_print_strings.json
+trinity_strings_sample.json
 trinity_prologue_text.txt
 scripts/exit_truth.json
 
@@ -33,3 +34,6 @@ WABE_ROOM_STRINGS_REPORT.md
 wabe*.txt
 wabe*.exp
 wabe*.qzl
+
+# Downloaded, licensed inference assets (prepare-intent-assets.mjs)
+prototype/vendor/intent/

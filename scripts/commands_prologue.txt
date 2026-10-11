@@ -1,0 +1,65 @@
+# 序章完整通关指令（已在真机验证）
+#
+# 覆盖 prologue.js 的全部 11 个房间，穿过白门进入 wabe 章的 Meadow。
+# 终局：7/100 分，23 回合。
+#
+# 取代 commands_prologue_to_wabe.txt——那份是照 Key & Compass 攻略写的，
+# 导航与真机地图对不上，实测只走到 3 个房间。
+#
+# 用法：
+#   node scripts/capture_original_text.mjs --dat "<TRINITY.DAT>" \
+#        --commands scripts/commands_prologue.txt --json /tmp/truth.json
+#
+# 几处容易踩空、顺序不能改的地方：
+#   · 进 Lancaster Gate 后要先空走一拍（look），让老妇人与风吹伞那段场景
+#     播完，伞落到树上，才能用球打下来。早一拍的话 throw 会被场景吃掉。
+#   · 婴儿车是关着的，必须先 open pram 才能 enter pram。
+#   · 卖鸟食的老太太把袋子递在手上，buy bag 之后还要 take bag 才能 feed birds。
+#   · 风向是整段的关键。开局是东风（往西吹），必须先在 Broad Walk 喂鸟引出
+#     红宝石、再去拿（被大鸟叼走），东风才停、西风起。此前坐进婴儿车撑伞
+#     只会被往西吹回 Broad Walk。
+#   · 离开 The Wabe 的第一次移动必被场景打断，要多发一次方向。
+#   · 结尾进白门靠 swim / wade / enter water 涉水过去，**不是往南走**。在
+#     Long Water 发 s 只会得到「frozen in your tracks」——人被导弹的奇景定住，
+#     一直等下去就会被炸死，死亡场景是冥河渡船的 The River（这不是过关）。
+#     涉水进 Wading 后还要等两回合让白门显形，才能 enter door。
+
+verbose
+take coin
+
+# 取球（Flower Walk），顺路绕 The Wabe 与 Round Pond 以覆盖房间
+e
+take ball
+nw
+n
+n
+w
+
+# 喂鸟 -> 红宝石 -> 被叼走 -> 东风停、西风起
+buy bag
+take bag
+feed birds
+take ruby
+
+# 取婴儿车（Black Lion Gate），一路往东推到 Lancaster Gate
+n
+open pram
+push pram east
+push pram east
+
+# 等场景播完，再用球把伞从树上打下来
+look
+throw ball at umbrella
+take umbrella
+
+# 推到 Lancaster Walk，坐进去撑伞，被西风吹向 Long Water
+push pram south
+enter pram
+open umbrella
+
+# 涉水进 Long Water（Wading），等白门显形后穿过去
+swim
+wait
+wait
+enter door
+look
