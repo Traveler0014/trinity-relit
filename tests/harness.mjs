@@ -31,7 +31,7 @@ export function createGame(options = {}) {
     embedding: stubEmbedding, ui: stubUi(output),
   });
   eng.registerTimerHandlers(PROLOGUE_TIMERS);
-  eng.describeRoom();
+  eng.moveTo(eng.state.room);
   return { eng, get state() { return eng.state; }, output };
 }
 
@@ -43,7 +43,7 @@ export async function command(game, input) {
   const response = output.slice(start).filter((entry) => entry.type !== "userInput")
     .map((entry) => entry.text).join("\n");
   assert.equal(state.dead, false, `${input} 导致死亡：\n${response}`);
-  assert.doesNotMatch(response, /错误：|尚未开放|没有可进入的起始房间|这句话无法识别/,
+  assert.doesNotMatch(response, /错误：|尚未开放|没有可进入的起始房间|这句话无法识别|暂时无法确定你的意思|没有消耗回合/,
     `${state.room}: ${input}`);
   return response;
 }

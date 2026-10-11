@@ -58,3 +58,59 @@ test('每回合自动存档；死亡不覆盖最后活着的进度', async () =>
   await game.eng.processInput('wait');
   assert.equal(saves.length, 1);
 });
+
+test('坏字段和未知计时器拒绝恢复，不覆盖活进度或自动存档', async () => {
+  let writes = 0;
+  const game = createGame({onAutosave: () => writes++});
+  await command(game, 'wait');
+  const before = jsonSave(game.eng);
+  const priorWrites = writes;
+  for (const patch of [
+    {flags: 'bad'}, {flags: [{}]}, {visited: [12]}, {itemLoc: []},
+    {itemLoc: {ball: 42}}, {counters: {turns: '1'}}, {counters: {x: Infinity}},
+    {turns: -1}, {turns: 1.5}, {score: NaN}, {maxScore: 0}, {flipped: 'false'},
+    {dead: 'false'}, {sundialSymbol: 8}, {chapter: 12},
+    {timer: {id: 'doomsday', remaining: '10'}},
+    {timer: {id: '__unknown__', remaining: 10}}, {timer: {}},
+    {room: 'constructor'},
+  ]) {
+    await assert.rejects(game.eng.deserialize({...before, state: {...before.state, ...patch}}));
+    assert.deepEqual(game.eng.serialize().state, before.state, JSON.stringify(patch));
+    assert.equal(writes, priorWrites);
+  }
+});
+
+test('旧存档缺少可选字段时仍能恢复默认值并继续', async () => {
+  const game = createGame();
+  await game.eng.deserialize({version: 1, state: {room: 'flower_walk', chapter: 'prologue'}});
+  assert.equal(game.state.turns, 0);
+  assert.equal(game.state.sundialSymbol, 2);
+  assert.equal(game.state.itemAt('ball'), 'flower_walk');
+  assert.ok(game.state.visited.has('flower_walk'));
+  await command(game, 'take the ball');
+  assert.ok(game.state.has('ball'));
+});
+
+test('章节没有有效落点时不改变当前章节、标志或房间', async () => {
+  const game = createGame();
+  const before = jsonSave(game.eng).state;
+  assert.equal(await game.eng.transitionChapter({to: 'ranch', roomCandidates: ['__missing__']}), false);
+  assert.deepEqual(game.eng.serialize().state, before);
+  assert.equal(await game.eng.transitionChapter({to: 'ranch', roomCandidates: ['nw_ranch']}), true);
+  assert.equal(game.state.chapter, 'ranch');
+  assert.ok(game.state.hasFlag('chapter_ranch_entered'));
+});
+
+test('导入预检不会提前替换当前状态', async () => {
+  const game = createGame();
+  const other = createGame();
+  await go(other, 'flower_walk');
+  await command(other, 'take ball');
+  const before = jsonSave(game.eng).state;
+  assert.equal(await game.eng.validateSave(jsonSave(other.eng)), true);
+  assert.deepEqual(game.eng.serialize().state, before);
+  const bad = jsonSave(other.eng);
+  bad.state.timer.id = '__unknown__';
+  await assert.rejects(game.eng.validateSave(bad));
+  assert.deepEqual(game.eng.serialize().state, before);
+});

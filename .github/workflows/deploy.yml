@@ -39,7 +39,7 @@ jobs:
     needs: check
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -48,7 +48,12 @@ jobs:
         with:
           persist-credentials: false
       - uses: actions/configure-pages@v5
-      # prototype/ 是纯静态 ES module，无构建步骤
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # 开源推理资源同源分发；不把模型二进制放进 Git。
+      - run: npm run prepare:models
+      # prototype/ 仍是纯静态 ES module
       - uses: actions/upload-pages-artifact@v3
         with:
           path: prototype

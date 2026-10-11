@@ -1,7 +1,7 @@
 # Trinity Relit — 发布收尾计划
 
-> 本文档是**内容开发完成之后**的权威路线图，与 `prototype/CHAPTER_PLAN.md`（章节内容路线图）并列。
-> 章节内容已全部完成，本文档只处理「让别人能玩到、能玩完、能玩下去」这三件事。
+> 本文档记录发布路线与历史决策，与 `prototype/CHAPTER_PLAN.md`（章节内容路线图）并列。
+> 2026-10-11 全项目复核：11 章已有实现，但地图、条件机制和原文证据仍有欠账，不能称“章节内容全部完成”。当前优先级、验收清单与实测结果见 [PROJECT_REVIEW.md](PROJECT_REVIEW.md)；下方较早日期的调查是历史记录。
 > 参照项目：[emollick/zork-underground-empire](https://github.com/emollick/zork-underground-empire)
 
 ---
@@ -12,14 +12,14 @@
 
 | 项 | 状态 |
 |---|---|
-| 11 个章节、约 130 个房间 | ✅ 全部完成，见 `prototype/CHAPTER_PLAN.md` |
+| 11 个章节、130 个房间 | 有实现；忠实还原尚未完成，见 `PROJECT_REVIEW.md` |
 | 引擎：移动 / 物品 / 事件 / 计时器 / 死亡 / 章节异步加载 | ✅ `prototype/js/engine.js` |
-| 中英混合 parser + 语义向量兜底 | ✅ `parser.js` + `embedding-worker.js` |
+| 中英混合 parser + 语义建议确认 | ✅ `parser.js` + `intent*.js`；旧 embedding 模块不在启动路径 |
 | 核心机制：日晷、Klein 瓶翻转、6 扇蘑菇门、渡船、壁橱谜题、剪线结局 | ✅ 见 `prototype/MECHANISMS_VS_PLAN.md` |
 | 章节规范静态校验 | ✅ `scripts/verify_chapters_rules.js` |
 | 原版数据文件的版权隔离 | ✅ `.gitignore` 已排除 `.DAT` / 提取产物 |
 
-### 缺失（本计划要补的）
+### 最初缺失项（历史基线，当前进度见文末与 PROJECT_REVIEW）
 
 | 项 | 现状 | 影响 |
 |---|---|---|
@@ -37,7 +37,7 @@
 
    → **引擎可直接在 Node 中以 stub ui + stub embedding 运行，通关测试无需重构现有代码。**
 3. `prototype/` 为纯静态 ES module，无构建步骤，可直接静态托管。
-4. transformers.js 与模型权重均来自外部 CDN（jsdelivr / HuggingFace），本仓库不含模型文件。
+4. transformers.js 与模型权重在部署时下载到忽略目录并同源分发；开发环境可按需回退公共源。模型二进制不提交，首屏不等待模型。
 
 ---
 
@@ -268,7 +268,9 @@ ranch 的 99 条非直连出口里，84 条是例程，但只对应 **19 个不�
 
 **尚未验证**：序章走到 The Wabe 的完整流程，以及章节懒加载（动态 `import`）在线上是否正常。这是阶段 2 通关测试要覆盖的。
 
-### 新增待决事项：语义兜底是否恢复
+### 原待决事项：语义兜底是否恢复（2026-10 已由人类授权）
+
+当前决定：按需小模型只提供候选建议，玩家确认后重走标准命令执行；见 `prototype/SEMANTIC_PLAN.md`。以下为此前的选项记录。
 
 语义兜底是 README 与 `ARCHITECTURE.md` 里重点介绍的特色，现已停用。需要确认这是有意的产品决策还是无意的回归：
 
@@ -492,3 +494,9 @@ ranch 的 99 条非直连出口里，84 条是例程，但只对应 **19 个不�
 当前静态结果为 **27/27 房间映射、98/98 条可比较固定出口一致、0 缺失/目标错/凭空**；**9 条条件方向**和 **28 条 Desert/Foothills 未映射目标**单列。可比项的 100% 不能当作整章完全还原。原有 7 条水库/水下/风车条件仍未完整实现，物品与光照状态缺口保留在 `prototype/RANCH_REWRITE_GAPS.md`。逐阶段验收、27 间来源例程和当前边界详见 `prototype/RANCH_REWRITE_PLAN.md`。
 
 本地 `npm run verify` 与 `npm run verify:exits -- ranch` 通过，`npm test` 为 28/28；主线 202 回合、访问 77 间、21/100 分。尚无 Ranch 全章 `dfrotz` 逐房间真机文本，也尚未推送、开 PR 或经过远端 CI。
+
+- [x] 2026-10-09 试玩修复：未知输入不消耗回合、不触发 onTurn/计时器/自动存档；30/30 测试与浏览器专项验证通过。
+
+- [x] 2026-10-11 小模型意图识别本地验收：中英文BGE按需加载、同源模型资产、候选确认、拒识不计回合；47/47测试与13条真实模型样例通过。候选命令仍由原引擎校验和执行；远端部署及全章识别质量尚待验证，详见 `prototype/SEMANTIC_PLAN.md`。
+
+- [x] 2026-10-11 全项目复核与稳定性修复：54/54 测试；新开局/续玩、坏存档保护、英文冠词、纯文本渲染、章节失败状态保护；桌面/窄屏及真实模型回归通过。更严格地图报告与剩余工作见 `PROJECT_REVIEW.md`，未作全项目还原完成声明。

@@ -14,6 +14,48 @@ function pramRoom(s) {
   return "black_lion_gate";
 }
 
+// 原版 1f150 / 2c6b8：靠近老妇人或她手中的伞时，立即接到同一阵风。
+// 等待分支继续使用原来的两回合计数；共用完成标志，避免 onTurn 重播。
+const WOMAN_APPROACH = {
+  pass: [
+    "You begin to walk past the old woman, but stop in your tracks.",
+    "你开始从老妇人身边走过，但停住了脚步。",
+  ],
+  help: [
+    "You begin to approach the old woman, but stop in your tracks.",
+    "你开始走近老妇人，但停住了脚步。",
+  ],
+  umbrella: [
+    "You approach the umbrella in the old woman's hands, but stop short.",
+    "你走近老妇人手中的雨伞，却突然停住了。",
+  ],
+};
+
+function finishUmbrellaWomanScene(s, eng, approach) {
+  if (s.hasFlag("umbrella_woman_done")) return;
+  s.setFlag("umbrella_woman_done");
+  s.placeItem("umbrella", "lancaster_gate_tree");
+
+  let scarText = "";
+  if (!s.hasFlag("seen_woman_face")) {
+    s.setFlag("seen_woman_face");
+    const [en, cn] = WOMAN_APPROACH[approach];
+    scarText = en + "\n\nHer face is wrong.\n\n" +
+      "You look a little closer and shudder to yourself. The entire left side of her head is scarred with deep red lesions, twisting her oriental features into a hideous mask. She must have been in an accident or something.\n\n" +
+      cn + "\n\n她的脸不对。\n\n你凑近一看，不禁打了个寒颤。她整个头部的左半边布满了深红色的伤疤，把她东方人的面容扭曲成一副可怖的面具。她一定是出过什么事故。\n\n";
+  }
+
+  eng.print(
+    "\n" + scarText +
+    "A strong gust of wind snatches the umbrella out of the old woman's hands and sweeps it into the branches of the tree.\n\n" +
+    "The woman circles the tree a few times, gazing helplessly upward. That umbrella obviously means a lot to her, for a wistful tear is running down her cheek. But nobody except you seems to notice her loss.\n\n" +
+    "After a few moments, the old woman dries her eyes, gives the tree a vicious little kick and shuffles away down the Lancaster Walk.\n\n" +
+    "一阵强风从老妇人手中夺走了雨伞，将它吹进了树的枝杈间。\n\n" +
+    "老妇人绕着树转了几圈，无助地仰望着。那把伞对她显然意义重大，一颗怅然的泪珠正沿她的脸颊滑落。但除了你，似乎没有人注意到她的损失。\n\n" +
+    "片刻之后，老妇人擦干了眼泪，狠狠地踢了树一脚，然后蹒跚着沿兰开斯特小路走了。"
+  );
+}
+
 const BIRD_CRIES = [
   '"Feed the birds! Thirty p!"',
   '"Thirty p! Thirty p a bag!"',
@@ -629,27 +671,7 @@ export const ROOMS = {
       if (!s.hasFlag("umbrella_woman_done") && s.hasFlag("umbrella_woman_seen")) {
         s.inc("umbrella_woman_turns");
         if (s.cnt("umbrella_woman_turns") >= 2) {
-          s.setFlag("umbrella_woman_done");
-          s.placeItem("umbrella", "lancaster_gate_tree");
-
-          let scarText = "";
-          if (!s.hasFlag("seen_woman_face")) {
-            s.setFlag("seen_woman_face");
-            scarText = "You begin to walk past the old woman, but stop in your tracks.\n\n" +
-                       "Her face is wrong.\n\n" +
-                       "You look a little closer and shudder to yourself. The entire left side of her head is scarred with deep red lesions, twisting her oriental features into a hideous mask. She must have been in an accident or something.\n\n" +
-                       "你开始从老妇人身边走过，但停住了脚步。\n\n她的脸不对。\n\n你凑近一看，不禁打了个寒颤。她整个头部的左半边布满了深红色的伤疤，把她东方人的面容扭曲成一副可怖的面具。她一定是出过什么事故。\n\n";
-          }
-
-          eng.print(
-            "\n" + scarText +
-            "A strong gust of wind snatches the umbrella out of the old woman's hands and sweeps it into the branches of the tree.\n\n" +
-            "The woman circles the tree a few times, gazing helplessly upward. That umbrella obviously means a lot to her, for a wistful tear is running down her cheek. But nobody except you seems to notice her loss.\n\n" +
-            "After a few moments, the old woman dries her eyes, gives the tree a vicious little kick and shuffles away down the Lancaster Walk.\n\n" +
-            "一阵强风从老妇人手中夺走了雨伞，将它吹进了树的枝杈间。\n\n" +
-            "老妇人绕着树转了几圈，无助地仰望着。那把伞对她显然意义重大，一颗怅然的泪珠正沿她的脸颊滑落。但除了你，似乎没有人注意到她的损失。\n\n" +
-            "片刻之后，老妇人擦干了眼泪，狠狠地踢了树一脚，然后蹒跚着沿兰开斯特小路走了。"
-          );
+          finishUmbrellaWomanScene(s, eng, "pass");
         }
       }
     },
@@ -659,6 +681,22 @@ export const ROOMS = {
     },
 
     events: [
+      {
+        id: "help_umbrella_woman",
+        match: { verb: ["help"], noun: ["woman", "old woman", "老妇人", "老太太", "她"] },
+        triggers: ["帮她撑伞", "帮老妇人打开雨伞", "帮帮那位老太太", "help the old woman", "help woman"],
+        when: (s) => s.hasFlag("umbrella_woman_seen") && !s.hasFlag("umbrella_woman_done"),
+        act(s, eng) { finishUmbrellaWomanScene(s, eng, "help"); },
+        text: "",
+      },
+      {
+        id: "approach_womans_umbrella",
+        match: { verb: ["open", "take", "hold"], noun: ["umbrella", "伞", "雨伞"] },
+        triggers: ["打开她手中的雨伞", "拿她手中的伞", "替她拿着雨伞", "open umbrella", "take umbrella", "hold umbrella"],
+        when: (s) => s.hasFlag("umbrella_woman_seen") && !s.hasFlag("umbrella_woman_done"),
+        act(s, eng) { finishUmbrellaWomanScene(s, eng, "umbrella"); },
+        text: "",
+      },
       {
         id: "examine_tree_lg",
         match: { verb: ["examine"], noun: ["tree", "crooked", "树", "老树"] },

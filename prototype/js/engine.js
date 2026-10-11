@@ -1,3 +1,5 @@
+import { commandIsKnown, needsClarification, suggestIntent } from "./intent.js";
+
 // ═══════════════════════════════════════════════════
 //  存档格式版本
 // ═══════════════════════════════════════════════════
@@ -8,6 +10,35 @@
 // 单纯新增字段不必递增：deserialize 对缺失字段一律回落到默认值。
 
 export const SAVE_VERSION = 1;
+
+// 缺失字段可向后兼容；已出现但类型错误的字段不能悄悄改成默认值。
+function validateSaveState(data) {
+  const record = value => value !== null && typeof value === "object" && !Array.isArray(value)
+    && [Object.prototype, null].includes(Object.getPrototypeOf(value));
+  const string = value => typeof value === "string" && value.length > 0;
+  const integer = Number.isSafeInteger;
+  const list = value => Array.isArray(value) && value.every(string);
+  const map = (value, valid) => record(value) && Object.entries(value).every(([key, v]) =>
+    !["__proto__", "constructor", "prototype"].includes(key) && valid(v));
+  if (!record(data)) throw new Error("存档状态格式无法识别");
+  const checks = {
+    chapter: string, itemLoc: value => map(value, string), flags: list, visited: list,
+    counters: value => map(value, integer), score: Number.isFinite,
+    maxScore: value => Number.isFinite(value) && value > 0,
+    turns: value => integer(value) && value >= 0,
+    sundialSymbol: value => integer(value) && value >= 1 && value <= 7,
+    flipped: value => typeof value === "boolean",
+    leverPulled: value => typeof value === "boolean",
+    dead: value => typeof value === "boolean",
+    timer: value => value === null || (record(value) && string(value.id) && integer(value.remaining)),
+  };
+  for (const [field, valid] of Object.entries(checks)) {
+    if (Object.hasOwn(data, field) && !valid(data[field])) {
+      throw new Error(`存档字段「${field}」格式错误`);
+    }
+  }
+}
+
 
 // ═══════════════════════════════════════════════════
 //  GameState — 游戏全局状态
@@ -149,11 +180,14 @@ const MAX_CARRY = 8;
 const PRAM_NOUNS = new Set(["pram", "perambulator", "carriage", "婴儿车", "推车", "车"]);
 
 export class GameEngine {
-  constructor({ rooms, items, parser, embedding, ui, chapterLoader, preloadedChapters, onAutosave }) {
+  constructor({ rooms, items, parser, embedding, ui, chapterLoader, preloadedChapters, onAutosave, intentResolver, intentTimeoutMs = 90000 }) {
     this.rooms = rooms;
     this.items = items;
     this.parser = parser;
     this.embedding = embedding;
+    this.intentResolver = intentResolver || null;
+    this.intentTimeoutMs = intentTimeoutMs;
+    this._inputBusy = false;
     this.ui = ui;
     this.chapterLoader = chapterLoader || null;
     this.loadedChapters = new Set(preloadedChapters || ["prologue"]);
@@ -184,6 +218,17 @@ export class GameEngine {
 
   // 读档。抛错即表示存档不可用，调用方应提示玩家并从头开始。
   async deserialize(save) {
+    this.state = await this._restoreSave(save);
+    return true;
+  }
+
+  // 导入前深校验，不能先覆盖磁盘存档、等重载后才发现坏档。
+  async validateSave(save) {
+    await this._restoreSave(save);
+    return true;
+  }
+
+  async _restoreSave(save) {
     if (!save || typeof save !== "object" || !save.state) {
       throw new Error("存档格式无法识别");
     }
@@ -194,6 +239,8 @@ export class GameEngine {
     if (typeof data.room !== "string" || !data.room) {
       throw new Error("存档缺少房间信息");
     }
+
+    validateSaveState(data);
 
     // 懒加载的章节必须先装载，否则读档后找不到房间。
     // 不只装当前章节：chapter_<id>_entered 标志记录了走过的每一章，
@@ -210,7 +257,7 @@ export class GameEngine {
       }
     }
 
-    if (!this.rooms[data.room]) {
+    if (!Object.hasOwn(this.rooms, data.room)) {
       throw new Error(`存档中的房间「${data.room}」不存在`);
     }
 
@@ -225,21 +272,21 @@ export class GameEngine {
     restored.itemLoc = { ...base, ...restored.itemLoc };
 
     // 把计时器回调装回去。章节已在上面装载完毕，注册表这时才是全的。
-    // 找不到对应 id 时 perTurn 保持 null，_postTurn 里有判空保护：
-    // 计时器照常倒数，只是不再有每回合的副作用。
-    if (restored.timer && this.timerHandlers.has(restored.timer.id)) {
+    // 未登记的计时器不能静默恢复，否则倒数会失去剧情/死亡副作用。
+    if (restored.timer) {
+      if (!this.timerHandlers.has(restored.timer.id)) {
+        throw new Error(`存档中的计时器「${restored.timer.id}」无法恢复`);
+      }
       restored.timer.perTurn = this.timerHandlers.get(restored.timer.id);
     }
 
-    this.state = restored;
-    return true;
+    return restored;
   }
 
   // 每回合结束调用。注意不走 moveTo/onEnter，读档只还原状态不重放副作用。
   _autosave() {
     if (!this.onAutosave) return;
-    // 死亡状态不写档。引擎目前没有重启逻辑（"输入任意内容重新开始" 是空头
-    // 支票），存下死局会让刷新后永远卡死。不写档 = 刷新回到死前一回合。
+    // 死亡状态不写档，刷新仍可回到死前一回合；从头开始使用页面按钮。
     if (this.state.dead) return;
     try {
       this.onAutosave(this.serialize());
@@ -312,14 +359,13 @@ export class GameEngine {
       return false;
     }
 
-    this.state.chapter = to;
-    this.state.setFlag(`chapter_${to}_entered`);
-
     const target = [...roomCandidates, fallbackRoom].find((id) => id && this.rooms[id]);
     if (!target) {
       this.ui.system(`章节「${to}」已加载，但没有可进入的起始房间。`);
       return false;
     }
+    this.state.chapter = to;
+    this.state.setFlag(`chapter_${to}_entered`);
     this.moveTo(target);
     return true;
   }
@@ -327,25 +373,66 @@ export class GameEngine {
   // ── Input processing ──
   async processInput(raw) {
     const input = raw.trim();
-    if (!input) return;
+    if (!input || this._inputBusy) return;
+    this._inputBusy = true;
+    try {
+      this.ui.userInput(input);
+      if (this.state.dead) return;
+      // 保留现有系统命令计数；推理期间绝不暂增回合。
+      const meta = ["帮助", "help", "?", "？", "背包", "物品", "inventory", "i", "分数", "score"].includes(input.toLowerCase());
+      if (meta) { this.state.turns++; this._handleMeta(input); return; }
+      if (this.intentResolver && needsClarification(input)) {
+        this.ui.system("请明确说出一个想执行的动作。没有消耗回合。");
+        return;
+      }
+      const command = this.parser.parse(input);
+      if (commandIsKnown(this, command) || !this.intentResolver) {
+        if (await this._runCommandTurn(command)) return;
+      } else {
+        const controller = new AbortController();
+        const cancel = () => controller.abort();
+        const progress = this.ui.intentProgress?.(cancel);
+        let timer;
+        try {
+          const timeout = new Promise(resolve => {
+            timer = setTimeout(() => { controller.abort(); resolve(null); }, this.intentTimeoutMs);
+            controller.signal.addEventListener('abort', () => resolve(null), { once: true });
+          });
+          const suggestion = await Promise.race([
+            suggestIntent(this, input, this.intentResolver, { signal: controller.signal, onProgress: progress?.update }), timeout,
+          ]);
+          progress?.close();
+          clearTimeout(timer);
+          if (suggestion?.unavailable) {
+            this.ui.system("语义识别暂时不可用。你仍可使用标准指令，稍后再次输入自然表达会重试。没有消耗回合。");
+            return;
+          }
+          if (suggestion?.choices && this.ui.chooseIntent) {
+            const selected = await this.ui.chooseIntent(suggestion.choices.map(({ id, label }) => ({ id, label })));
+            const candidate = !controller.signal.aborted && suggestion.validate(selected);
+            if (candidate && await this._runCommandTurn(candidate.command)) return;
+            this.ui.system("未执行动作，没有消耗回合。");
+            return;
+          }
+        } finally {
+          clearTimeout(timer);
+          controller.abort();
+          progress?.close();
+        }
+      }
+      this.ui.system(needsClarification(input)
+        ? "请明确说出一个想执行的动作。没有消耗回合。"
+        : "暂时无法确定你的意思。请说清动作和目标，或输入「帮助」查看指令提示。没有消耗回合。");
+    } finally { this._inputBusy = false; }
+  }
 
-    this.ui.userInput(input);
+  async _runCommandTurn(command) {
+    if (!command) return false;
     this.state.turns++;
-
-    // 1. Meta commands
-    const meta = this._handleMeta(input);
-    if (meta) return;
-
-    // 2. Parser (structured matching)
-    const cmd = this.parser.parse(input);
-    if (cmd) {
-      const handled = await this._handleParsed(cmd);
-      if (handled) { this._postTurn(); return; }
-    }
-
-    // 解析返回 null：不进行语义猜测，直接提示无法识别
-    this.ui.system("这句话无法识别。输入「帮助」查看指令提示。");
-    this._postTurn();
+    const handled = await this._handleParsed(command);
+    if (handled) { this._postTurn(); return true; }
+    this.state.turns--;
+    return false;
   }
 
   _handleMeta(input) {
@@ -502,7 +589,7 @@ export class GameEngine {
     }
 
     if (this.state.dead) {
-      this.ui.system("\n你死了。\n\n输入任意内容重新开始。");
+      this.ui.system("\n你死了。\n\n点击页面上方「重新开始」开始新游戏，或刷新页面续玩最后的存档。");
     }
 
     this._autosave();

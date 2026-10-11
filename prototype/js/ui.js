@@ -11,6 +11,11 @@ const MAX_LOG_NODES = 500;
 // 英文段则不含汉字。
 const HAS_CJK = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
 
+// 只由本模块生成布局标签；任何外部文本都不得作为 HTML 解释。
+const escapeText = (value) => String(value).replace(/[&<>"']/g, ch => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+})[ch]);
+
 function splitByLanguage(t) {
   return String(t)
     .split(/\n{2,}/)
@@ -18,7 +23,7 @@ function splitByLanguage(t) {
     .filter(Boolean)
     .map((para) => {
       const lang = HAS_CJK.test(para) ? "zh" : "en";
-      return `<div class="scene-text lang-${lang}">${para}</div>`;
+      return `<div class="scene-text lang-${lang}">${escapeText(para)}</div>`;
     })
     .join("");
 }
@@ -43,7 +48,7 @@ export const ui = {
   },
 
   location(name, cn) {
-    this._append(`<div class="location">${name}（${cn}）</div>`);
+    this._append(`<div class="location">${escapeText(name)}（${escapeText(cn)}）</div>`);
   },
 
   text(t) {
@@ -51,21 +56,21 @@ export const ui = {
   },
 
   userInput(t) {
-    this._append(`<div class="user-input">${t}</div>`);
+    this._append(`<div class="user-input">${escapeText(t)}</div>`);
   },
 
   system(t) {
-    this._append(`<div class="system-msg">${t}</div>`);
+    this._append(`<div class="system-msg">${escapeText(t)}</div>`);
   },
 
   inventory(t) {
-    this._append(`<div class="inventory-display">${t}</div>`);
+    this._append(`<div class="inventory-display">${escapeText(t)}</div>`);
   },
 
   debug(topMatches) {
     if (!topMatches || topMatches.length === 0) return;
     const lines = topMatches
-      .map(m => `${m.id}: ${m.score.toFixed(3)} (← "${m.trigger}")`)
+      .map(m => `${escapeText(m.id)}: ${m.score.toFixed(3)} (← "${escapeText(m.trigger)}")`)
       .join("<br>");
     const vis = ($("#debug-toggle")?.textContent || "").includes("开");
     this._append(`<div class="debug-info ${vis ? "visible" : ""}">${lines}</div>`);
@@ -175,6 +180,58 @@ export const ui = {
     window.location.reload();
   },
 
+  intentProgress(cancel) {
+    const box = document.createElement("div");
+    box.className = "intent-panel system-msg";
+    const status = document.createElement("span");
+    status.setAttribute("role", "status");
+    status.textContent = "正在理解你的意思…首次使用需下载语言模型，可取消并使用标准指令。";
+    const button = document.createElement("button");
+    button.className = "btn";
+    button.textContent = "取消识别";
+    button.addEventListener("click", cancel, { once: true });
+    box.append(status, button);
+    this._appendEl(box);
+    return {
+      update: (progress) => {
+        if (progress.status === "recognizing") status.textContent = "正在理解你的意思…";
+        else if (progress.status === "progress" && Number.isFinite(progress.progress)) {
+          status.textContent = `正在准备${progress.language === "zh" ? "中文" : "英文"}识别 · 当前文件 ${Math.round(progress.progress)}%（可取消）`;
+        }
+      },
+      close: () => box.remove(),
+    };
+  },
+
+  chooseIntent(choices) {
+    return new Promise(resolve => {
+      const box = document.createElement("div");
+      box.className = "intent-panel system-msg";
+      const title = document.createElement("div");
+      title.textContent = choices.length === 1 ? "你是想这样做吗？" : "你想做哪一个动作？";
+      box.appendChild(title);
+      const finish = (id, label) => {
+        box.replaceChildren(document.createTextNode(label));
+        resolve(id);
+      };
+      for (const { id, label } of choices) {
+        const button = document.createElement("button");
+        button.className = "btn";
+        button.textContent = label;
+        button.addEventListener("click", () => finish(id, `已选择：${label}`), { once: true });
+        box.appendChild(button);
+      }
+      const cancel = document.createElement("button");
+      cancel.className = "btn";
+      cancel.textContent = "都不是，重新输入";
+      cancel.addEventListener("click", () => finish(null, "已取消识别"), { once: true });
+      box.appendChild(cancel);
+      this._appendEl(box);
+      box.addEventListener("keydown", event => { if (event.key === "Escape") finish(null, "已取消识别"); });
+      box.querySelector("button")?.focus();
+    });
+  },
+
   enableInput(handler) {
     const inp = $("#input");
     inp.disabled = false;
@@ -185,9 +242,11 @@ export const ui = {
       if (!val) return;
       inp.value = "";
       inp.disabled = true;
-      await handler(val);
-      inp.disabled = false;
-      inp.focus();
+      try { await handler(val); }
+      catch (error) {
+        console.error("指令处理失败", error);
+        this.system("处理指令时遇到问题，请重试。");
+      } finally { inp.disabled = false; inp.focus(); }
     });
   },
 };

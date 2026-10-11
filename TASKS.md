@@ -75,9 +75,9 @@
   另外 Codex 在 `engine.js` 的 `processInput` 里接入了 `ContextualIntentBoundary` 子系统。这与 `SHIP_PLAN.md` 阶段 1 末尾**尚未拍板的待决事项「语义兜底是否恢复」**相邻，属于产品决策，建议合并前先确认那是不是你要的方向。
 - ~~**计时器回调跨不过读档**~~（T2 发现，**已于 2026-09-23 经人类授权修复**）。`state.timer.perTurn` 是闭包，JSON 存不下。解法：章节模块用 `export const TIMERS` 在模块层导出回调，引擎用 `registerTimerHandlers()` 按 id 登记，读档时装回。`prologue.js` / `pacific.js` 已改（超出 T2 原定「涉及文件」范围，已获授权）。
   **新章节若要用计时器，回调必须写进该章的 `TIMERS` 导出**，不能再写成 `startTimer` 的内联闭包，否则读档后失效。已写进 `CHAPTER_RULES.md`（§2、§4、§6、§10），并已在 `verify_chapters_rules.js` 加静态检查，CI 会拦（覆盖：内联闭包、键名与 id 不一致、TIMERS 缺键、跨章节 id 重复）。
-- **开局房间的 `onEnter` 从不触发**（T2 发现，既有行为）。`main.js` 的 boot 用 `describeRoom()` 而非 `moveTo()` 进入首个房间，因此 `palace_gate.onEnter` 里启动 doomsday 计时器的那段，只有在玩家离开 Palace Gate 后再走回来时才会执行。读档路径沿用了同样的语义（读档只还原状态、不重放 `onEnter` 副作用）。若这是 bug，修它会改变开局节奏，需要通关测试兜底后再动。
-- **死亡后没有重启逻辑**（T2 发现，既有缺陷）。`engine.js` 里「输入任意内容重新开始」是空头支票，全仓库没有任何重启实现。T2 绕开的方式是：死亡状态不写存档（刷新即回到死前一回合）+ 头部提供「重新开始」按钮。引擎层的缺口仍在。
-- **存档往返自检应补进 `tests/`**（T2 发现）。T2 期间用 scratchpad 里的临时脚本验证了 7 项（往返一致、读档后可继续、懒加载章节可读档、4 类坏存档被拒、死亡不写档），但 `tests/` 是 T1 的范围，没有入库。T1 合并后建议补一个 `tests/save.test.js`。
+- ~~**开局房间的 `onEnter` 从不触发**~~（T9 已修复，新开局进入房间、续玩不重放事件）（T2 发现，既有行为）。`main.js` 的 boot 用 `describeRoom()` 而非 `moveTo()` 进入首个房间，因此 `palace_gate.onEnter` 里启动 doomsday 计时器的那段，只有在玩家离开 Palace Gate 后再走回来时才会执行。读档路径沿用了同样的语义（读档只还原状态、不重放 `onEnter` 副作用）。若这是 bug，修它会改变开局节奏，需要通关测试兜底后再动。
+- ~~**死亡提示宣称任意输入可重启**~~（T9 已修正提示，使用真实的页头重启按钮）（T2 发现，既有缺陷）。`engine.js` 里「输入任意内容重新开始」是空头支票，全仓库没有任何重启实现。T2 绕开的方式是：死亡状态不写存档（刷新即回到死前一回合）+ 头部提供「重新开始」按钮。引擎层的缺口仍在。
+- ~~**存档往返自检应补进 `tests/`**~~（T1/T9 已覆盖往返、计时器、坏字段与浏览器导入导出）（T2 发现）。T2 期间用 scratchpad 里的临时脚本验证了 7 项（往返一致、读档后可继续、懒加载章节可读档、4 类坏存档被拒、死亡不写档），但 `tests/` 是 T1 的范围，没有入库。T1 合并后建议补一个 `tests/save.test.js`。
 
 ## 2026-10-08 Codex 整合验收
 
@@ -95,3 +95,28 @@
 - 状态：👀 本地计划与验证完成，待人类审查；未合并 `main`
 - 涉及文件：保留 26 个原有房间 ID；在 `prototype/js/data/ranch.js` 补原版 `front_deck`、静态出口、描述与可在本章表达的门状态；`tests/ranch-rewrite.test.mjs`、`scripts/verify_chapters_rules.js`（仅原版不对称出口白名单）、`prototype/CHAPTER_PLAN.md`、`prototype/RANCH_REWRITE_PLAN.md`、`prototype/RANCH_REWRITE_GAPS.md`、本文件和 `SHIP_PLAN.md`。
 - 当前：27/27 房间由玩家方向命令可达；静态出口已映射项 98/98 一致；9 条条件方向与 28 条跨章未映射目标单列。两扇平台门与室内前门同步并经存档测试。逐项证据与未完成条件见 `prototype/RANCH_REWRITE_PLAN.md`，不把 98/98 解释为全章机制已还原。
+
+### T7 未知输入回合修复 — Codex（2026-10-09）
+- 人类明确授权修改 `engine.js`，并核对帮助老妇人的原版响应。
+- 范围：`prototype/js/engine.js`、`tests/input-turns.test.mjs`、TASKS/SHIP_PLAN/progress 文档。
+- 状态：👀 本地修复与验证完成；沿用当前试玩工作树；2026-10-11 随本次进度提交交付。
+- 计划：原版真机核对 → 修复未知输入回合结算 → 覆盖房间事件、计时器与自动存档 → 全套及浏览器验证。
+- 验收：30/30 测试、verify 通过；出口仍为既有 43 项偏差（本次无章节/出口改动）。浏览器确认未知输入不推进，wait 正常触发事件，无页面异常。
+
+### T8 小模型意图识别 — Codex（2026-10-10）
+- 人类要求接入语义识别小模型并继续开发；本轮授权覆盖所需运行时接线。
+- 范围：新建 `prototype/js/intent*.js`；`engine.js`、`main.js`、`ui.js`、`parser.js`、`data/prologue.js`（仅已核实的老妇人互动）、`prototype/index.html`；相关 `tests/`、验证脚本与开发文档。
+- engine.js 本轮文件锁：Codex（T2 原改动保留）。
+- 状态：👀 本地功能与验证完成；47/47自动测试、13条真实模型语料、真实页面交互通过。远端CI/部署未执行。详细阶段与限制见 `prototype/SEMANTIC_PLAN.md`。
+- 加载实测暴露公共CDN不可用/慢下载；范围补充资源准备脚本、package.json、.gitignore、README.md、deploy.yml。部署时下载已开源模型资源到忽略目录，静态站同源分发，不提交模型二进制。
+
+### T9 全项目评估与稳定性优化 — Codex（2026-10-11）
+- 授权：人类要求“全面评估整个项目，继续优化”，延续已授权的运行时修复与语义接线；保留全部既有工作。
+- 分支：沿用试玩工作树 `claude/rewrite-ranch`；已 fetch，当前包含 origin/main，工作区有未提交改动，不重写历史。
+- 范围：`prototype/js/{engine,parser,main,ui}.js`、相关 `tests/` 与浏览器回归脚本；`PROJECT_REVIEW.md`、README、ARCHITECTURE、TASKS/SHIP_PLAN/progress。本轮不改章节、物品、房间 ID 或地图，不引入新服务。
+- 状态：👀 本轮评估与限定稳定性优化已验证；54/54 测试、规范校验、浏览器存档/安全渲染/窄屏、13 条真实模型回归通过。旧出口偏差仍为 43，严格报告 129 条待核偏差未改；2026-10-11 随本次进度提交交付，未部署。
+- 具体计划、证据与后续验收条件：见 `PROJECT_REVIEW.md`。
+
+### 2026-10-11 进度提交
+- 人类要求推送当前进度；交付分支为 `claude/rewrite-ranch`，包含 Ranch 整合、T7/T8/T9 和相关验收文档，不合并或推送 main。
+- 提交前重新执行 `npm test`（54/54）和 `npm run verify`（通过）；原版数据、模型资源与浏览器验收产物不纳入提交。

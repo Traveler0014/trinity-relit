@@ -4,6 +4,7 @@
 
 import { GameEngine, SAVE_VERSION } from "./engine.js";
 import { Parser } from "./parser.js";
+import { LocalIntentResolver } from "./intent-model.js";
 import { ui } from "./ui.js";
 import { ITEMS } from "./data/items.js";
 import { ROOMS as PROLOGUE, TIMERS as PROLOGUE_TIMERS } from "./data/prologue.js";
@@ -113,15 +114,8 @@ async function boot() {
     rooms: ALL_ROOMS,
     items: ITEMS,
     parser,
-    // 语义兜底目前未启用：engine.processInput 只走 parser 结构化匹配，
-    // 事件靠 ev.match 命中，不再调用 embedding.findMatch。
-    //
-    // 因此启动时不加载嵌入模型。此前 boot 会 await 一个约 130MB 的下载，
-    // 而模型没有任何调用方——实测下行仅 40KB/s（官方源与国内镜像一样），
-    // 下载要近一小时且必然中途失败，游戏根本打不开。
-    //
-    // embedding.js / embedding-worker.js 保留完好。若要恢复语义兜底，
-    // 改成命中失败时按需懒加载，不要放回启动路径。
+    // 只创建轻量包装器；模型、CDN 和 WASM 在未识别输入后才按需加载。
+    intentResolver: new LocalIntentResolver(),
     embedding: null,
     ui,
     chapterLoader: async (id) => {
@@ -171,6 +165,7 @@ async function boot() {
       let save;
       try {
         save = parseSaveFile(text);
+        await engine.validateSave(save);
       } catch (err) {
         ui.system(`导入失败：${err.message}`);
         return;
@@ -198,12 +193,12 @@ async function boot() {
 // 有存档就问，没有就直接开局。
 async function resumeOrStart(engine) {
   const save = saveStore.read();
-  if (!save) { engine.describeRoom(); return; }
+  if (!save) { engine.moveTo(engine.state.room); return; }
 
   const choice = await ui.askResume(describeSave(save));
   if (choice !== "continue") {
     saveStore.clear();
-    engine.describeRoom();
+    engine.moveTo(engine.state.room);
     return;
   }
 
@@ -214,7 +209,7 @@ async function resumeOrStart(engine) {
     console.error("读档失败", err);
     ui.system(`存档无法读取（${err.message}），只能从头开始。`);
     saveStore.clear();
-    engine.describeRoom();
+    engine.moveTo(engine.state.room);
     return;
   }
 

@@ -34,3 +34,6 @@ WABE_ROOM_STRINGS_REPORT.md
 wabe*.txt
 wabe*.exp
 wabe*.qzl
+
+# Downloaded, licensed inference assets (prepare-intent-assets.mjs)
+prototype/vendor/intent/
