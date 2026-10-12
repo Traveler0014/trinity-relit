@@ -7,6 +7,8 @@ const option = (name, fallback) => { const i = process.argv.indexOf(name); retur
 const modulePath = option('--playwright', 'playwright');
 const { chromium } = await import(modulePath === 'playwright' ? modulePath : pathToFileURL(resolve(modulePath)).href);
 const output = option('--output-dir', '/tmp/trinity-intent-lifecycle');
+const inferenceTimeoutMs = Number(option('--timeout-ms', '15000'));
+assert.ok(Number.isFinite(inferenceTimeoutMs) && inferenceTimeoutMs > 0);
 mkdirSync(output, {recursive: true});
 const browser = await chromium.launch({headless: true});
 try {
@@ -28,7 +30,7 @@ try {
     await page.waitForFunction(() => { const log = document.querySelector('#output'); return log.scrollHeight - log.clientHeight - log.scrollTop < 2; });
     await page.screenshot({path: `${output}/${name}.png`});
   }
-  async function init(timeout = 15000) {
+  async function init(timeout = inferenceTimeoutMs) {
     await page.evaluate(async timeout => {
       const {GameEngine} = await import('./js/engine.js');
       const {Parser} = await import('./js/parser.js');
@@ -41,15 +43,25 @@ try {
       window.probe.moveTo('round_pond');
     }, timeout);
   }
+  await page.evaluate(async () => {
+    const {ui} = await import('./js/ui.js');
+    const progress = ui.intentProgress(() => {});
+    progress.update({status: 'progress', progress: 100, loaded: 18000000, total: 16000000, language: 'zh'});
+    window.progressProbe = {text: document.querySelector('[role="status"]').textContent};
+    progress.close();
+  });
+  const progressText = await page.evaluate(() => window.progressProbe.text);
+  assert.match(progressText, /已接收.*MB/);
+  assert.doesNotMatch(progressText, /100%|下载完成/);
   await init(300);
   await page.evaluate(() => window.probe.processInput('把水面上那只折出来的小鸟捞起来'));
   assert.match(await page.locator('#output').innerText(), /语义识别等待超时/);
   assert.equal(await page.evaluate(() => window.probe.state.turns), 0);
   await capture('timeout');
-  await page.evaluate(() => { window.probe.intentTimeoutMs = 15000; });
+  await page.evaluate(timeout => { window.probe.intentTimeoutMs = timeout; }, inferenceTimeoutMs);
   async function requestAndCancel() {
     const pending = page.evaluate(() => window.probe.processInput('把水面上那只折出来的小鸟捞起来'));
-    await page.getByRole('button', {name: '拿纸鸟', exact: true}).waitFor({timeout: 20000});
+    await page.getByRole('button', {name: '拿纸鸟', exact: true}).waitFor({timeout: inferenceTimeoutMs + 10000});
     await capture('options');
     await page.getByRole('button', {name: '都不是，重新输入', exact: true}).click();
     await pending;

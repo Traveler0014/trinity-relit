@@ -197,8 +197,12 @@ export const ui = {
         if (progress.status === "recognizing") status.textContent = "正在理解你的意思…";
         else if (progress.status === "loading") status.textContent = "首次使用正在准备语言模型，慢网可能需要几分钟；可以取消并使用标准指令。";
         else if (progress.status === "preparing") status.textContent = "正在复用已加载或正在准备的语言模型…";
-        else if (progress.status === "progress" && Number.isFinite(progress.progress)) {
-          status.textContent = `正在准备${progress.language === "zh" ? "中文" : "英文"}识别 · 当前文件 ${Math.round(progress.progress)}%（可取消）`;
+        else if (progress.status === "done") status.textContent = "资源文件已接收，正在准备语言模型…";
+        else if (progress.status === "progress") {
+          // 压缩后的 Content-Length 可能小于解压后的已读字节，库会提前报 100%。
+          // 只展示已接收量，完成与否以 done/recognizing 事件为准。
+          const received = Number.isFinite(progress.loaded) ? ` · 当前文件已接收 ${(progress.loaded / 1048576).toFixed(1)} MB` : "";
+          status.textContent = `正在下载${progress.language === "zh" ? "中文" : "英文"}识别资源${received}（可取消）`;
         }
       },
       close: () => box.remove(),
