@@ -5,6 +5,7 @@
 import { GameEngine, SAVE_VERSION } from "./engine.js";
 import { Parser } from "./parser.js";
 import { LocalIntentResolver } from "./intent-model.js";
+import { createIntentNotice } from "./intent-notice.js";
 import { ui } from "./ui.js";
 import { ITEMS } from "./data/items.js";
 import { ROOMS as PROLOGUE, TIMERS as PROLOGUE_TIMERS } from "./data/prologue.js";
@@ -110,16 +111,21 @@ async function boot() {
   ui.setLoading("正在载入…", 0);
 
   const parser = new Parser();
+  // 失败说明层包在 resolver 外面：只记录输入与判定结果，不改执行行为。
+  const notice = createIntentNotice({
+    ui,
+    processInput: (input) => engine.processInput(input),
+  });
   const engine = new GameEngine({
     rooms: ALL_ROOMS,
     items: ITEMS,
     parser,
     // 只创建轻量包装器；模型、CDN 和 WASM 在未识别输入后才按需加载。
-    intentResolver: new LocalIntentResolver({
+    intentResolver: notice.wrap(new LocalIntentResolver({
       // 失败原因进调试面板（默认不可见），便于玩家/开发者排查网络、初始化或资源问题。
       onDebug: (message) => ui.semanticDebug(message),
       onFailure: ({ stage, message }) => ui.semanticDebug(`语义识别失败：stage=${stage || "?"} message=${message}`),
-    }),
+    })),
     embedding: null,
     ui,
     chapterLoader: async (id) => {
@@ -143,6 +149,12 @@ async function boot() {
 
   // prologue 是预加载的，不经过 chapterLoader，它的计时器要在这里登记。
   engine.registerTimerHandlers(PROLOGUE_TIMERS);
+
+  // 失败提示后的归因与「更多」入口由此取用。
+  ui.setSemanticControls({
+    onMore: () => notice.openMenu(),
+    cause: () => notice.causeText(),
+  });
 
   ui.hideLoading();
 

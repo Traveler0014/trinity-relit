@@ -425,6 +425,7 @@ export class GameEngine {
           }
           if (suggestion?.unavailable) {
             this.ui.system("语义识别暂时不可用。你仍可使用标准指令，稍后再次输入自然表达会重试。没有消耗回合。");
+            this.ui.semanticHint?.();
             return;
           }
           if (suggestion?.choices && this.ui.chooseIntent) {
@@ -440,6 +441,7 @@ export class GameEngine {
       this.ui.system(needsClarification(input)
         ? "请明确说出一个想执行的动作。没有消耗回合。"
         : "暂时无法确定你的意思。请说清动作和目标，或输入「帮助」查看指令提示。没有消耗回合。");
+      this.ui.semanticHint?.();
     } finally { this._inputBusy = false; }
   }
 

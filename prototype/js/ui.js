@@ -230,6 +230,84 @@ export const ui = {
     this._appendEl(el);
   },
 
+  // 失败提示后的轻量入口：归因小字 + 一个小链接，详细说明在弹窗里。
+  semanticHint() {
+    if (!this._semantic) return;
+    const line = document.createElement("div");
+    line.className = "hint-line";
+    const cause = this._semantic.cause?.();
+    if (cause) {
+      const note = document.createElement("span");
+      note.className = "hint-cause";
+      note.textContent = cause;
+      line.append(note, document.createTextNode(" · "));
+    }
+    const link = document.createElement("button");
+    link.type = "button";
+    link.className = "hint-link";
+    link.textContent = "更多";
+    // 不设 once：关掉菜单后同一条目还能再点开。
+    link.addEventListener("click", () => this._semantic.onMore());
+    line.appendChild(link);
+    this._appendEl(line);
+  },
+
+  // 通用确认菜单：标题 + 说明 + 动作按钮，右上角 × 关闭，Escape 视为取消。
+  // 同时只允许一个，避免旧日志里的「更多」叠加出多个面板。
+  semanticDialog({ title, body, actions }) {
+    if (this._dialogOpen) return Promise.resolve(null);
+    return new Promise(resolve => {
+      this._dialogOpen = true;
+      const box = document.createElement("div");
+      box.className = "intent-panel system-msg";
+      const head = document.createElement("div");
+      head.className = "dialog-head";
+      const heading = document.createElement("div");
+      heading.className = "dialog-title";
+      heading.textContent = title;
+      const close = document.createElement("button");
+      close.type = "button";
+      close.className = "dialog-close";
+      close.textContent = "×";
+      close.setAttribute("aria-label", "关闭");
+      head.append(heading, close);
+      const content = document.createElement("div");
+      content.className = "dialog-body";
+      content.textContent = body;
+      const row = document.createElement("div");
+      row.className = "dialog-actions";
+      const finish = (action) => {
+        this._dialogOpen = false;
+        box.replaceChildren(Object.assign(document.createElement("div"), {
+          className: "resume-chosen",
+          textContent: `· ${action?.done || "已关闭"}`,
+        }));
+        resolve(action ? action.value : null);
+      };
+      close.addEventListener("click", () => finish(null), { once: true });
+      for (const action of actions) {
+        const button = document.createElement("button");
+        button.className = "btn" + (action.primary ? " btn-primary" : "");
+        button.textContent = action.label;
+        button.addEventListener("click", () => finish(action), { once: true });
+        row.appendChild(button);
+      }
+      box.append(head, content, row);
+      this._appendEl(box);
+      box.addEventListener("keydown", event => { if (event.key === "Escape") finish(null); });
+      // 不聚焦主按钮：提交命令的回车尚未抬起时对话框已出现，
+      // 焦点在主按钮上会被同一/下一次回车误触发送动作。
+      // 聚焦容器本身：Escape 直接可用，按钮用 Tab 到达。
+      box.tabIndex = -1;
+      box.focus();
+    });
+  },
+
+  // 语义层注入：失败提示找得到弹菜单的回调与归因。
+  setSemanticControls({ onMore, cause }) {
+    this._semantic = { onMore, cause };
+  },
+
   chooseIntent(choices) {
     return new Promise(resolve => {
       const box = document.createElement("div");

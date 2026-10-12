@@ -134,3 +134,8 @@
 - 范围：`prototype/js/{intent-worker,intent-model,main,ui}.js`、`tests/intent.test.mjs`、`prototype/SEMANTIC_PLAN.md`。**不动 `engine.js`，不引入设置层/同意流程**（设置层见 T13）。
 - 内容：失败阶段（runtime/download/initializing/infer/worker）+ 原始 message 经 `onFailure` 进调试面板；库内部未处理 rejection 不再升级成 Worker 死亡事件（否则会作废正在进行的下载，与 PR #4 目标相冲）；运行时 huggingface.co → hf-mirror.com 回退；进度补文件名与 initializing 阶段（替换按小文件 done 闪烁的写法，已就绪不再多闪“复用”）。
 - 验收：`npm test` 63/63、`npm run verify` 通过；浏览器实测冷启动无假 100%、初始化阶段可见、不可达源时镜像提示与 `stage=download` 诊断可见。
+
+### T12 语义失败归因与「更多」入口 — pi（2026-10-12，待审查）
+- 范围：新建 `prototype/js/intent-notice.js`、`tests/intent-notice.test.mjs`；修改 `ui.js`、`engine.js`（仅两行 `semanticHint?.()` 钩子）、`main.js`、`index.html`、`tests/boot-save.test.mjs`（stub 补 `setSemanticControls`/`semanticDebug`）、文档。
+- 内容：失败提示后的小字归因 + 「更多」弹窗（× 可关、可重复点开、失败类提供重试）；超时/取消不重复播报；弹窗里说明原版动词表限制。不改执行行为、不动设置层。
+- 验收：`npm test` 71/71、`npm run verify` 通过；浏览器实测归因小字、弹窗内容与 ×/重开交互。

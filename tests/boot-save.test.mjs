@@ -21,7 +21,7 @@ test('真实启动入口续玩 Pacific 后计时器仍会到期，自动保存�
     removeItem: () => { stored = null; },
   };
   globalThis.__trinityTestUi = {
-    ...stubUi(output), setLoading() {}, hideLoading() {}, setSaveControls() {},
+    ...stubUi(output), setLoading() {}, hideLoading() {}, setSaveControls() {}, setSemanticControls() {}, semanticDebug() {},
     askResume: async () => 'continue', enableInput: handler => { input = handler; },
   };
   try {
@@ -62,7 +62,7 @@ test('真实新开局启动一次首房间事件；续玩保持计时器，不�
       const output = [];
       let input;
       globalThis.__trinityTestUi = {
-        ...stubUi(output), setLoading() {}, hideLoading() {}, setSaveControls() {},
+        ...stubUi(output), setLoading() {}, hideLoading() {}, setSaveControls() {}, setSemanticControls() {}, semanticDebug() {},
         askResume: async () => 'continue', enableInput: handler => { input = handler; },
       };
       await import(`data:text/javascript;base64,${Buffer.from(source + '\n// ' + phase).toString('base64')}`);

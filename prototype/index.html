@@ -282,6 +282,39 @@ body {
 }
 .intent-panel { margin: 16px 0; padding: 12px; border: 1px solid var(--border); }
 .intent-panel .btn { margin: 8px 8px 0 0; white-space: normal; }
+/* 失败提示后的轻量入口：归因小字 + 一个小链接 */
+.hint-line { display: flex; flex-wrap: wrap; align-items: baseline; margin-top: 2px; }
+.hint-cause { color: var(--faint); font-size: 12px; line-height: 1.6; }
+.hint-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--faint);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.6;
+  text-decoration: underline dotted;
+  cursor: pointer;
+  display: inline-block;
+}
+.hint-link:hover, .hint-link:focus-visible { color: var(--dim); }
+
+/* 确认菜单（「更多」）：可 x 关闭、可重复点开 */
+.dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.dialog-title { font-weight: 600; color: var(--bright); margin-bottom: 6px; }
+.dialog-close {
+  background: none;
+  border: none;
+  padding: 0 2px;
+  color: var(--faint);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.dialog-close:hover, .dialog-close:focus-visible { color: var(--bright); }
+.dialog-body { color: var(--dim); margin-bottom: 10px; white-space: pre-line; }
+.dialog-actions { display: flex; flex-wrap: wrap; }
 </style>
 </head>
 <body>
