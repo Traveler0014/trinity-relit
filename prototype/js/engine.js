@@ -1,4 +1,4 @@
-import { commandIsKnown, needsClarification, suggestIntent } from "./intent.js";
+import { commandIsKnown, completeCommand, needsClarification, suggestIntent } from "./intent.js";
 
 // ═══════════════════════════════════════════════════
 //  存档格式版本
@@ -386,16 +386,30 @@ export class GameEngine {
         return;
       }
       const command = this.parser.parse(input);
-      if (commandIsKnown(this, command) || !this.intentResolver) {
+      const completion = completeCommand(this, command);
+      if (completion) {
+        if (this.ui.chooseIntent) await this._confirmSuggestion(completion);
+        else this.ui.system(`请补充动作目标，例如：${completion.choices.map(c => c.label).join('、')}。没有消耗回合。`);
+        return;
+      }
+      const known = commandIsKnown(this, command);
+      if (known || !this.intentResolver) {
         if (await this._runCommandTurn(command)) return;
+        if (known) {
+          this.ui.system(command.noun
+            ? "我理解了这个动作，但当前场景或物品条件还不满足。没有消耗回合。"
+            : "请补充这个动作的目标。没有消耗回合。");
+          return;
+        }
       } else {
         const controller = new AbortController();
         const cancel = () => controller.abort();
         const progress = this.ui.intentProgress?.(cancel);
         let timer;
+        let timedOut = false;
         try {
           const timeout = new Promise(resolve => {
-            timer = setTimeout(() => { controller.abort(); resolve(null); }, this.intentTimeoutMs);
+            timer = setTimeout(() => { timedOut = true; controller.abort('timeout'); resolve(null); }, this.intentTimeoutMs);
             controller.signal.addEventListener('abort', () => resolve(null), { once: true });
           });
           const suggestion = await Promise.race([
@@ -403,15 +417,18 @@ export class GameEngine {
           ]);
           progress?.close();
           clearTimeout(timer);
+          if (controller.signal.aborted) {
+            this.ui.system(timedOut
+              ? "语义识别等待超时。模型准备会在后台继续，下次输入可复用；也可先用标准指令。没有消耗回合。"
+              : "已取消识别，没有消耗回合。");
+            return;
+          }
           if (suggestion?.unavailable) {
             this.ui.system("语义识别暂时不可用。你仍可使用标准指令，稍后再次输入自然表达会重试。没有消耗回合。");
             return;
           }
           if (suggestion?.choices && this.ui.chooseIntent) {
-            const selected = await this.ui.chooseIntent(suggestion.choices.map(({ id, label }) => ({ id, label })));
-            const candidate = !controller.signal.aborted && suggestion.validate(selected);
-            if (candidate && await this._runCommandTurn(candidate.command)) return;
-            this.ui.system("未执行动作，没有消耗回合。");
+            await this._confirmSuggestion(suggestion, controller.signal);
             return;
           }
         } finally {
@@ -424,6 +441,13 @@ export class GameEngine {
         ? "请明确说出一个想执行的动作。没有消耗回合。"
         : "暂时无法确定你的意思。请说清动作和目标，或输入「帮助」查看指令提示。没有消耗回合。");
     } finally { this._inputBusy = false; }
+  }
+
+  async _confirmSuggestion(suggestion, signal) {
+    const selected = await this.ui.chooseIntent(suggestion.choices.map(({ id, label }) => ({ id, label })));
+    const candidate = !signal?.aborted && suggestion.validate(selected);
+    if (candidate && await this._runCommandTurn(candidate.command)) return;
+    this.ui.system("未执行动作，没有消耗回合。");
   }
 
   async _runCommandTurn(command) {

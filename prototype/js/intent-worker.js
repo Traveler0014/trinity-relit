@@ -6,24 +6,39 @@ const models = new Map();
 const vectors = new Map();
 let runtime;
 
+// 模型缓存包含进行中的 Promise；超时后重试也共用同一次初始化。
+const progressListeners = new Map();
+const latestProgress = new Map();
 async function loadModel(language, progress) {
-  if (models.has(language)) return models.get(language);
-  // 固定版本，初次语义请求才 import；首页与标准命令不等待 CDN。
-  runtime ||= import('../vendor/intent/transformers.min.js').then(module => ({ module, local:true }))
-    .catch(() => import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js').then(module => ({ module, local:false })))
-    .catch(() => import('https://unpkg.com/@xenova/transformers@2.17.2/dist/transformers.min.js').then(module => ({ module, local:false })));
-  const { module: { pipeline, env }, local } = await runtime.catch(error => { runtime = null; throw error; });
-  env.allowLocalModels = local;
-  if (local) {
-    env.localModelPath = new URL('../vendor/intent/models/', import.meta.url).href;
-    env.backends.onnx.wasm.wasmPaths = new URL('../vendor/intent/', import.meta.url).href;
+  const listeners = progressListeners.get(language) || new Set();
+  progressListeners.set(language, listeners);
+  listeners.add(progress);
+  if (latestProgress.has(language)) progress(latestProgress.get(language));
+  if (!models.has(language)) {
+    const loading = (async () => {
+      runtime ||= import('../vendor/intent/transformers.min.js').then(module => ({ module, local:true }))
+        .catch(() => import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js').then(module => ({ module, local:false })))
+        .catch(() => import('https://unpkg.com/@xenova/transformers@2.17.2/dist/transformers.min.js').then(module => ({ module, local:false })));
+      const { module: { pipeline, env }, local } = await runtime.catch(error => { runtime = null; throw error; });
+      env.allowLocalModels = local;
+      if (local) {
+        env.localModelPath = new URL('../vendor/intent/models/', import.meta.url).href;
+        env.backends.onnx.wasm.wasmPaths = new URL('../vendor/intent/', import.meta.url).href;
+      }
+      env.backends.onnx.wasm.numThreads = 1;
+      return pipeline('feature-extraction', MODELS[language], {
+        quantized: true, progress_callback: value => {
+          latestProgress.set(language, value);
+          for (const listener of listeners) listener(value);
+        },
+      });
+    })();
+    models.set(language, loading);
+    // 失败时允许后续明确重试；已成功的模型和下载中的模型均保留。
+    loading.catch(() => { models.delete(language); latestProgress.delete(language); });
   }
-  env.backends.onnx.wasm.numThreads = 1;
-  const model = await pipeline('feature-extraction', MODELS[language], {
-    quantized: true, progress_callback: progress,
-  });
-  models.set(language, model);
-  return model;
+  try { return await models.get(language); }
+  finally { listeners.delete(progress); }
 }
 
 async function embedBatch(model, language, texts) {
@@ -41,7 +56,7 @@ self.onmessage = async ({ data: { id, request } }) => {
   try {
     const language = HAN.test(request.input) ? 'zh' : 'en';
     const progress = value => self.postMessage({ id, type: 'progress', progress: { ...value, language } });
-    progress({ status: 'loading' });
+    progress({ status: models.has(language) ? 'preparing' : 'loading' });
     const model = await loadModel(language, progress);
     progress({ status: 'recognizing' });
     const entries = request.candidates.flatMap(candidate => {

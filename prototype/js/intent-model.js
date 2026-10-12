@@ -25,7 +25,13 @@ export class LocalIntentResolver {
     }
     const id = ++this.sequence;
     return new Promise((resolve, reject) => {
-      const abort = () => this.dispose();
+      const abort = () => {
+        if (signal.reason !== 'timeout') { this.dispose(); return; }
+        // 超时只放弃本次输入；保留正在下载的模型，避免慢网每次从头开始。
+        this.pending.delete(id);
+        cleanup();
+        reject(new Error('Recognition timed out; model preparation continues'));
+      };
       const cleanup = () => signal?.removeEventListener('abort', abort);
       this.pending.set(id, { resolve, reject, progress: onProgress, cleanup });
       signal?.addEventListener('abort', abort, { once: true });
