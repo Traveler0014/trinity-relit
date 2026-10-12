@@ -56,3 +56,5 @@ node scripts/verify_intent_browser.mjs --url http://127.0.0.1:8081/
 - 新脚本 `scripts/verify_intent_lifecycle_browser.mjs` 接受与其他浏览器脚本相同的 `--playwright` / `--url` 参数。本轮在本地修复分支验证，尚未发布。
 
 - 线上慢网观测发现 progress 在读取约 16 MB 后报告 100%，随后仍继续接收至 22 MB 以上：压缩 Content-Length 与解压流长度不一致。UI 改为显示已接收 MB，完成阶段以资源 done / 模型 recognizing 事件为准，补浏览器回归防止“假完成”。
+
+- 2026-10-12 线上已实际跑通同源模型：人工首请求超时→重试显示“拿纸鸟”候选→连续识别→刷新 Cache Storage 命中→购买与喂鸟；ONNX 下载总次数 1，Worker 数 2（刷新重建），无 pageerror。公共站冷加载数分钟，验收脚本可用 `--timeout-ms 600000` 等待完整下载；这只改变测试等待，游戏超时仍为 90 秒并保留后台准备。加载修复经 PR #4 部署，进度提示后续修复见 PR #5。

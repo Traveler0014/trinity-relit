@@ -75,3 +75,5 @@ Original prompt: 这里卡关了（Round Pond 场景中“捡起折纸鸟”和�
 - 发布前远端连接恢复，fetch 与 GitHub API 确认 main 仍为 5581f48。沿用本轮游戏发布授权，将已验证修复经 PR 检查后合并部署；实际状态以远端工作流结果为准。
 
 - 线上慢网观测发现 progress 在读取约 16 MB 后报告 100%，随后仍继续接收至 22 MB 以上：压缩 Content-Length 与解压流长度不一致。UI 改为显示已接收 MB，完成阶段以资源 done / 模型 recognizing 事件为准，补浏览器回归防止“假完成”。
+
+- 线上长等待真实验收已通过，报告 `/tmp/trinity-intent-production-lifecycle/result.json`：ONNX 下载 1 次，刷新后 Worker 总数 2，确认候选可见、买→喂鸟成功，无 pageerror。首次联网确实耗时数分钟；脚本增加 `--timeout-ms`，本地默认 15 秒，公网可传 600000。PR #4 已部署，PR #5 收尾进度 UI。
