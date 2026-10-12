@@ -16,6 +16,16 @@ const escapeText = (value) => String(value).replace(/[&<>"']/g, ch => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 })[ch]);
 
+// 进度文案里给文件起个中文名字，玩家才知道百分比变化是换了文件。
+const FILE_LABELS = [
+  [/onnx\/.*\.onnx$/, "模型权重"],
+  [/^tokenizer(_config)?\.json$/, "分词器"],
+  [/^config\.json$/, "模型配置"],
+];
+function fileLabel(file) {
+  return FILE_LABELS.find(([pattern]) => pattern.test(file))?.[1] || String(file).split("/").pop() || "识别资源";
+}
+
 function splitByLanguage(t) {
   return String(t)
     .split(/\n{2,}/)
@@ -197,16 +207,27 @@ export const ui = {
         if (progress.status === "recognizing") status.textContent = "正在理解你的意思…";
         else if (progress.status === "loading") status.textContent = "首次使用正在准备语言模型，慢网可能需要几分钟；可以取消并使用标准指令。";
         else if (progress.status === "preparing") status.textContent = "正在复用已加载或正在准备的语言模型…";
-        else if (progress.status === "done") status.textContent = "资源文件已接收，正在准备语言模型…";
+        else if (progress.status === "initializing") status.textContent = "资源已接收，正在初始化语言模型（首次较慢），可取消…";
+        else if (progress.status === "mirror") status.textContent = "模型源站不可用，正在切换镜像下载…";
         else if (progress.status === "progress") {
-          // 压缩后的 Content-Length 可能小于解压后的已读字节，库会提前报 100%。
-          // 只展示已接收量，完成与否以 done/recognizing 事件为准。
-          const received = Number.isFinite(progress.loaded) ? ` · 当前文件已接收 ${(progress.loaded / 1048576).toFixed(1)} MB` : "";
-          status.textContent = `正在下载${progress.language === "zh" ? "中文" : "英文"}识别资源${received}（可取消）`;
+          // 库按 loaded/total 算百分比：响应头长度缺失（gzip 分块）或只是压缩长度时，
+          // total 会被顶成当前 loaded，百分比提前变 100%。只展示已接收量，
+          // 完成与否以 done / initializing / recognizing 事件为准。
+          const received = Number.isFinite(progress.loaded) ? ` · 已接收 ${(progress.loaded / 1048576).toFixed(1)} MB` : "";
+          status.textContent = `正在下载${progress.language === "zh" ? "中文" : "英文"}识别资源：${fileLabel(progress.file)}${received}（可取消）`;
         }
       },
       close: () => box.remove(),
     };
+  },
+
+  // 仅调试面板可见的技术明细（失败阶段 + 原始错误），玩家默认看不到。
+  semanticDebug(text) {
+    const el = document.createElement("div");
+    const visible = ($("#debug-toggle")?.textContent || "").includes("开");
+    el.className = `debug-info${visible ? " visible" : ""}`;
+    el.textContent = text;
+    this._appendEl(el);
   },
 
   chooseIntent(choices) {

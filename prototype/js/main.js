@@ -115,7 +115,11 @@ async function boot() {
     items: ITEMS,
     parser,
     // 只创建轻量包装器；模型、CDN 和 WASM 在未识别输入后才按需加载。
-    intentResolver: new LocalIntentResolver(),
+    intentResolver: new LocalIntentResolver({
+      // 失败原因进调试面板（默认不可见），便于玩家/开发者排查网络、初始化或资源问题。
+      onDebug: (message) => ui.semanticDebug(message),
+      onFailure: ({ stage, message }) => ui.semanticDebug(`语义识别失败：stage=${stage || "?"} message=${message}`),
+    }),
     embedding: null,
     ui,
     chapterLoader: async (id) => {

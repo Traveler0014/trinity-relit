@@ -220,6 +220,85 @@ test('正常结果后的控制器清理不销毁已加载Worker', async () => {
   assert.equal(count, 1);
 });
 
+test('失败带阶段与原始信息，供上层区分网络/初始化/推理失败', async () => {
+  const workers = [];
+  const failures = [];
+  const resolver = new LocalIntentResolver({
+    onFailure: failure => failures.push(failure),
+    workerFactory: () => {
+      const w = {messages: [], postMessage(message) { this.messages.push(message); }, terminate() { this.terminated = true; }};
+      workers.push(w); return w;
+    },
+  });
+  const pending = resolver.resolve({input: '表达', candidates: []});
+  const worker = workers[0];
+  worker.onmessage({data: {id: worker.messages[0].id, type: 'error', stage: 'download', message: 'Failed to fetch'}});
+  await assert.rejects(pending, (error) => {
+    assert.equal(error.stage, 'download');
+    assert.equal(error.message, 'Failed to fetch');
+    return true;
+  });
+  assert.deepEqual(failures, [{stage: 'download', message: 'Failed to fetch'}], '诊断通道要拿到阶段与原始信息');
+  resolver.dispose();
+});
+
+test('Worker 自身起不来时归为识别组件失败，不退化成无阶段错误', async () => {
+  const workers = [];
+  const failures = [];
+  const resolver = new LocalIntentResolver({
+    onFailure: failure => failures.push(failure),
+    workerFactory: () => {
+      const w = {messages: [], postMessage(message) { this.messages.push(message); }, terminate() { this.terminated = true; }};
+      workers.push(w); return w;
+    },
+  });
+  const pending = resolver.resolve({input: '表达', candidates: []});
+  workers[0].onerror({message: 'boom'});
+  await assert.rejects(pending, (error) => {
+    assert.equal(error.stage, 'worker');
+    return true;
+  });
+  assert.equal(failures[0].stage, 'worker');
+  assert.equal(workers[0].terminated, true);
+});
+
+test('用户取消不是失败：诊断通道不得把它当错误上报', async () => {
+  const failures = [];
+  const workers = [];
+  const resolver = new LocalIntentResolver({
+    onFailure: failure => failures.push(failure),
+    workerFactory: () => {
+      const w = {messages: [], postMessage(message) { this.messages.push(message); }, terminate() { this.terminated = true; }};
+      workers.push(w); return w;
+    },
+  });
+  const controller = new AbortController();
+  const pending = resolver.resolve({input: '表达', candidates: []}, {signal: controller.signal});
+  controller.abort();
+  await assert.rejects(pending);
+  assert.deepEqual(failures, []);
+});
+
+test('库内部非致命错误走调试通道，不完成也不拒绝待决请求', async () => {
+  const debug = [];
+  const workers = [];
+  const resolver = new LocalIntentResolver({
+    onDebug: message => debug.push(message),
+    workerFactory: () => {
+      const w = {messages: [], postMessage(message) { this.messages.push(message); }, terminate() { this.terminated = true; }};
+      workers.push(w); return w;
+    },
+  });
+  const pending = resolver.resolve({input: '表达', candidates: []});
+  const worker = workers[0];
+  worker.onmessage({data: {type: 'debug', message: '未处理的 Promise 拒绝：Failed to fetch'}});
+  assert.deepEqual(debug, ['未处理的 Promise 拒绝：Failed to fetch']);
+  assert.equal(resolver.pending.size, 1, '调试消息不得动到待决请求');
+  worker.onmessage({data: {id: worker.messages[0].id, type: 'result', result: {kind: 'none'}}});
+  assert.deepEqual(await pending, {kind: 'none'});
+  resolver.dispose();
+});
+
 test('买缺宾语时列购买候选，确认前不消耗回合，确认后执行原事件', async () => {
   const g = createGame({intentResolver: {resolve() { assert.fail('缺宾语不必下载模型'); }}});
   g.eng.moveTo('broad_walk');

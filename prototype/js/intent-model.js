@@ -1,7 +1,11 @@
 // 按需 Worker；不在构造时下载模型或依赖。
+// 失败的阶段与原始信息会跟错误一起回传，供上层区分
+// 「网络下载失败 / 初始化失败 / 推理失败 / Worker 起不来」。
 export class LocalIntentResolver {
-  constructor({ workerFactory = () => new Worker(new URL('./intent-worker.js', import.meta.url), { type: 'module' }) } = {}) {
+  constructor({ workerFactory = () => new Worker(new URL('./intent-worker.js', import.meta.url), { type: 'module' }), onDebug, onFailure } = {}) {
     this.workerFactory = workerFactory;
+    this.onDebug = onDebug;
+    this.onFailure = onFailure;
     this.worker = null;
     this.pending = new Map();
     this.sequence = 0;
@@ -12,16 +16,33 @@ export class LocalIntentResolver {
     if (!this.worker) {
       this.worker = this.workerFactory();
       this.worker.onmessage = ({ data }) => {
+        // 库内部的非致命错误走调试通道，不影响正在进行或待决的请求。
+        if (data.type === 'debug') { this.onDebug?.(data.message); return; }
         const entry = this.pending.get(data.id);
         if (!entry) return;
         if (data.type === 'progress') { entry.progress?.(data.progress); return; }
         this.pending.delete(data.id);
         entry.cleanup();
         if (data.type === 'result') entry.resolve(data.result);
-        else entry.reject(new Error('Model unavailable'));
+        else {
+          // 带上失败阶段与原始信息，既交给上层兜底，也上报给诊断通道。
+          const failure = { stage: data.stage, message: data.message || 'Model unavailable' };
+          this.onFailure?.(failure);
+          entry.reject(Object.assign(new Error(failure.message), {
+            name: 'IntentModelError', stage: failure.stage,
+          }));
+        }
       };
-      this.worker.onerror = () => this.dispose();
-      this.worker.onmessageerror = () => this.dispose();
+      // Worker 自身起不来（脚本/资源/线程级错误）也算「识别组件」问题，
+      // 不能退化成没有阶段的通用错误。
+      this.worker.onerror = (event) => {
+        this.onFailure?.({ stage: 'worker', message: event?.message || 'Worker failed to start' });
+        this.dispose('worker');
+      };
+      this.worker.onmessageerror = () => {
+        this.onFailure?.({ stage: 'worker', message: 'Worker message could not be read' });
+        this.dispose('worker');
+      };
     }
     const id = ++this.sequence;
     return new Promise((resolve, reject) => {
@@ -36,16 +57,18 @@ export class LocalIntentResolver {
       this.pending.set(id, { resolve, reject, progress: onProgress, cleanup });
       signal?.addEventListener('abort', abort, { once: true });
       try { this.worker.postMessage({ id, request }); }
-      catch { this.dispose(); }
+      catch { this.dispose('worker'); }
     });
   }
 
-  dispose() {
+  dispose(reason) {
     this.worker?.terminate();
     this.worker = null;
     for (const entry of this.pending.values()) {
       entry.cleanup();
-      entry.reject(new Error('Model unavailable or cancelled'));
+      entry.reject(Object.assign(new Error('Model unavailable or cancelled'), {
+        name: 'IntentModelError', stage: reason,
+      }));
     }
     this.pending.clear();
   }

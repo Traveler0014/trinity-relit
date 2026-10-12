@@ -58,3 +58,14 @@ node scripts/verify_intent_browser.mjs --url http://127.0.0.1:8081/
 - 线上慢网观测发现 progress 在读取约 16 MB 后报告 100%，随后仍继续接收至 22 MB 以上：压缩 Content-Length 与解压流长度不一致。UI 改为显示已接收 MB，完成阶段以资源 done / 模型 recognizing 事件为准，补浏览器回归防止“假完成”。
 
 - 2026-10-12 线上已实际跑通同源模型：人工首请求超时→重试显示“拿纸鸟”候选→连续识别→刷新 Cache Storage 命中→购买与喂鸟；ONNX 下载总次数 1，Worker 数 2（刷新重建），无 pageerror。公共站冷加载数分钟，验收脚本可用 `--timeout-ms 600000` 等待完整下载；这只改变测试等待，游戏超时仍为 90 秒并保留后台准备。加载修复经 PR #4 部署，进度提示后续修复见 PR #5。
+
+## 2026-10-12 失败可诊断与下载稳健性
+
+背景：试玩反馈“模型加载失败时重试也无法恢复，也没有报错码可以辅助排查”。对 PR #4/#5 的现有实现做了不改变产品行为的加固，只碰 worker / resolver / 进度呈现与接线，不动 `engine.js`。
+
+- **失败带阶段**：worker 随错误回传 `stage`（`runtime` / `download` / `initializing` / `infer`）与原始 `message`；resolver 把它附成带 `stage` 的错误，并通过 `onFailure` 上报诊断通道；Worker 自身起不来（脚本/资源/线程级）固定归为 `worker`，不再退化成无阶段的“模型不可用”。`main.js` 把它写进调试面板（默认不可见）：「语义识别失败：stage=download message=Failed to fetch」。
+- **不把库的异常升级成 Worker 死亡**：库内部未处理的 rejection 会被浏览器报成 Worker 级 error 事件，而 `onerror` 会 `dispose()`——既丢掉已捕获的失败阶段，也把正在进行的模型下载一并作废（与 PR #4 “超时保留下载” 的目标相冲）。现在 `unhandledrejection` 被拦下转交调试通道，不影响待决请求。
+- **运行时镜像回退**：远程模式按 `huggingface.co → hf-mirror.com` 顺序尝试，失败即切换并提示“模型源站不可用，正在切换镜像下载…”，切过的镜像本次会话优先；vendor 同源模式不受影响。本机实测对 HF 吞吐 0.15–2.6 MB/s（同一 24MB 文件 12–156s），源站不可达是主要失败原因。
+- **进度呈现**：百分比仍不展示（保持 PR #5 结论），但补上文件名（分词器 / 模型配置 / 模型权重）与阶段，如“正在下载中文识别资源：模型权重 · 已接收 12.3 MB”。`initializing` 改由 onnx 权重的 `done` 分界触发（“资源已接收，正在初始化语言模型（首次较慢）…”），不再让每个小文件的 `done` 都改写状态再被下一个文件覆盖（闪烁）。已就绪的模型直接进识别，热请求不再多闪一条“正在复用……”。
+- **事实补充**：`tokenizer.json` 最终响应是 gzip 且没有 Content-Length，`config.json` 是 716B 且长度正确，onnx 在我这侧带完整长度。库的 `readResponse` 在 `newLoaded > total` 时把 `total` 顶成当前 `loaded`，所以**长度缺失或只是压缩长度**都会把百分比提前钉在 100%——两种触发方式等价，结论（不展示百分比、以 done/recognizing 为准）不变。
+- 验收：`npm test` 63/63（新增 3 项：阶段与原始信息回传、Worker 级失败归类、调试通道不动待决请求；另加“用户取消不算失败”）；`npm run verify` 通过。浏览器实测：冷启动进度依次为首次准备 → 下载（带文件名与已接收 MB）→ 资源已接收正在初始化 → 正在理解你的意思，无假 100%；把远程源临时指向不可达域名时出现镜像切换提示，且调试面板收到 `stage=download message=Failed to fetch`。
