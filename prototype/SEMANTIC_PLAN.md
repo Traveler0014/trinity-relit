@@ -54,3 +54,5 @@ node scripts/verify_intent_browser.mjs --url http://127.0.0.1:8081/
 - “问妇人”在 Broad Walk 没有已实现的询问事件。模型只能提出已有动作建议，不能生成原版对话；本轮不伪造或直接替换成其他动作。
 - 验收：59/59 单元/主线测试，规范通过，旧出口仍 43 项；真实模型原语料 13/13。新增慢加载测试证明首次超时→重试→连续输入只下载模型一次；页面重载新增 Worker，但仍从 Cache Storage 读取模型；选择购买后喂鸟正常，页面错误为 0。路由测试关闭 HTTP cache，未禁用 Cache Storage；这不代表浏览器清除网站数据后无需下载。
 - 新脚本 `scripts/verify_intent_lifecycle_browser.mjs` 接受与其他浏览器脚本相同的 `--playwright` / `--url` 参数。本轮在本地修复分支验证，尚未发布。
+
+- 线上慢网观测发现 progress 在读取约 16 MB 后报告 100%，随后仍继续接收至 22 MB 以上：压缩 Content-Length 与解压流长度不一致。UI 改为显示已接收 MB，完成阶段以资源 done / 模型 recognizing 事件为准，补浏览器回归防止“假完成”。

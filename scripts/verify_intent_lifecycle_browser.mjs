@@ -41,6 +41,16 @@ try {
       window.probe.moveTo('round_pond');
     }, timeout);
   }
+  await page.evaluate(async () => {
+    const {ui} = await import('./js/ui.js');
+    const progress = ui.intentProgress(() => {});
+    progress.update({status: 'progress', progress: 100, loaded: 18000000, total: 16000000, language: 'zh'});
+    window.progressProbe = {text: document.querySelector('[role="status"]').textContent};
+    progress.close();
+  });
+  const progressText = await page.evaluate(() => window.progressProbe.text);
+  assert.match(progressText, /已接收.*MB/);
+  assert.doesNotMatch(progressText, /100%|下载完成/);
   await init(300);
   await page.evaluate(() => window.probe.processInput('把水面上那只折出来的小鸟捞起来'));
   assert.match(await page.locator('#output').innerText(), /语义识别等待超时/);
