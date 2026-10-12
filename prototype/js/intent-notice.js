@@ -1,11 +1,20 @@
 // ═══════════════════════════════════════════════════
-//  语义识别的失败说明层
-//  · 记住最近一条未得到判定的输入，供「重试刚才的输入」使用；
-//  · 把失败阶段翻成玩家能懂的一句话，挂在失败提示后面；
-//  · 「更多」菜单承载完整说明与重试（设置面板落地前的过渡形态）。
-//  只观察与说明，不改变执行行为：超时与用户取消由引擎自己的
-//  文案负责，这里不重复播报。
+//  语义识别的决策与说明层
+//  · 用户偏好由 settings.semantic（ask / on / off）裁决，
+//    引擎与 UI 都不直接读写设置；将来设置面板消费同一份。
+//  · 首次需要时先征求同意（本地运行、体积、低配设备风险），
+//    同意才下载模型，拒绝写回 off；
+//  · 「用户显式取消」＝不想在本地运行模型：停止下载、写回 off；
+//    引擎超时只放弃当次请求（底层按 abort reason 区分，Worker 保留）；
+//  · 失败按阶段给出可排查的归因，挂在失败提示后面；「更多」
+//    菜单承载完整说明、开关与重试。
 // ═══════════════════════════════════════════════════
+
+import { settings } from "./settings.js";
+
+const HAN = /[\u3400-\u9fff]/;
+const languageOf = (input) => (HAN.test(input) ? "zh" : "en");
+const MODEL_SIZE_HINT = "约 25–35 MB";
 
 const CAUSES = {
   runtime: { cause: "识别组件加载失败（网络或离线）", detail: "浏览器没能加载语义识别所需的运行时文件，通常是网络问题或离线" },
@@ -16,8 +25,11 @@ const CAUSES = {
 };
 const UNAVAILABLE = { cause: "模型不可用", detail: "语义识别模型不可用" };
 const NO_CLOSE_MATCH = { cause: "没有足够接近的动作可选", detail: "语义识别已执行，但当前房间里没有足够接近的可执行动作" };
+const NOT_ENABLED = { cause: "语义识别已关闭", detail: "语义识别当前是关闭的，自然语言只按标准指令解析" };
 
 export function createIntentNotice({ ui, processInput } = {}) {
+  const ready = new Set();   // 本次会话已就绪的语言（决定取消时丢不丢模型）
+  let disposeResolver = () => {};
   let lastQuestion = null;   // 最近一条未得到模型判定的输入
   let lastOutcome = null;    // 最近一次失败的归因
   let retryable = false;     // 只有失败（而非模型判定为不接近）才值得重试
@@ -30,47 +42,138 @@ export function createIntentNotice({ ui, processInput } = {}) {
     processInput(input);
   }
 
+  function standDown(input) {
+    lastQuestion = input;
+    lastOutcome = NOT_ENABLED;
+    retryable = false;
+    return { kind: "none" };
+  }
+
   // 失败提示后的小字归因；没有归因时返回 null（只显示入口）。
   const causeText = () => lastOutcome?.cause || null;
 
+  const consentDialog = () => ({
+    title: "启用语义识别？",
+    body:
+      "这句话没有对应的标准指令。可以下载一个本地语言模型来理解更自然的表达，" +
+      "模型完全在浏览器内运行，不会向任何服务器发送你的输入。\n" +
+      `需要下载 ${MODEL_SIZE_HINT} 的模型文件；首次使用需要等待，低配置或移动设备可能体验不佳。` +
+      (typeof caches === "undefined" ? "\n当前页面无法持久缓存模型，每次打开都要重新下载。" : ""),
+    actions: [
+      { label: "下载并启用", value: "enable", primary: true, done: "已启用语义识别" },
+      { label: "只用标准指令", value: "decline", done: "已选择只用标准指令" },
+    ],
+  });
+
   async function openMenu() {
     if (!ui.semanticDialog) return;
-    const action = await ui.semanticDialog({
-      title: "语义识别",
-      body:
-        "语义识别只在当前房间的可执行动作里挑最接近的一个，确认后才执行。" +
-        (lastOutcome ? `\n上次识别：${lastOutcome.detail}。` : "") +
-        "\n本作只还原原版 Trinity 的动词表与互动——像「问」「搭话」这类动作原版里没有，" +
-        "无论怎么表达都不会有回应；能做什么以房间里实际存在的事件为准。",
-      actions: [
-        ...(retryable && lastQuestion
-          ? [{ label: "重试刚才的输入", value: "retry", primary: true, done: "正在重试" }]
-          : []),
-        { label: "关闭", value: null, done: "已关闭" },
-      ],
-    });
-    if (action === "retry") rerun();
+    const action = await ui.semanticDialog(settings.get("semantic") === "on"
+      ? {
+        title: "语义识别",
+        body:
+          (ready.size ? "语义识别已开启，模型已就绪。" : "语义识别已开启，模型尚未就绪。") +
+          (lastOutcome ? `\n上次识别：${lastOutcome.detail}。` : "") +
+          "\n本作只还原原版 Trinity 的动词表与互动——像「问」「搭话」这类动作原版里没有，" +
+          "无论怎么表达都不会有回应；能做什么以房间里实际存在的事件为准。" +
+          "\n关闭后将只解析标准指令，随时可以重新开启。",
+        actions: [
+          ...(retryable && lastQuestion ? [{ label: "重试刚才的输入", value: "retry", primary: true, done: "正在重试" }] : []),
+          { label: "关闭语义识别", value: "disable", done: "已关闭语义识别" },
+          { label: "关闭", value: null, done: "已关闭" },
+        ],
+      }
+      : consentDialog());
+    if (action === "enable") {
+      settings.set("semantic", "on");
+      rerun();
+    } else if (action === "decline") {
+      settings.set("semantic", "off");
+    } else if (action === "disable") {
+      settings.set("semantic", "off");
+      ready.clear();
+      disposeResolver();   // 关闭即释放模型与运行时内存
+    } else if (action === "retry") {
+      rerun();
+    }
   }
 
-  // 包在底层 resolver 外面：只记录输入与判定结果，不改变行为。
+  // 包在底层 resolver 外面：同意门控、取消语义、失败归因都在这里裁决。
   function wrap(resolver) {
+    disposeResolver = (reason) => resolver.dispose(reason);
+    // 就绪信号由底层 resolver 上报。
+    if ("onModelReady" in resolver) resolver.onModelReady = (language) => ready.add(language);
+
     return {
-      async resolve(request, options) {
-        lastQuestion = request.input;
+      async resolve(request, options = {}) {
+        const input = request.input;
+        const language = languageOf(input);
+        lastQuestion = input;   // 未得到命中前都算「待重跑」
         lastOutcome = null;
         retryable = false;
+        if (settings.get("semantic") === "off") return standDown(input);
+
+        if (settings.get("semantic") === "ask") {
+          const consent = ui.semanticDialog ? await ui.semanticDialog(consentDialog()) : null;
+          if (consent === "enable") settings.set("semantic", "on");
+          else {
+            if (consent === "decline") settings.set("semantic", "off");
+            return standDown(input);
+          }
+          if (options.signal?.aborted) {
+            // 引擎等待期间已超时返回：启用后直接替用户重跑这句。
+            lastQuestion = input;
+            rerun();
+            return { kind: "none" };
+          }
+        }
+
+        let userCancelled = false;
+        const inner = new AbortController();
+        // 引擎的中止要带着 reason 转发，底层才能区分「超时保留下载」与「取消停掉」。
+        const forward = () => inner.abort(options.signal?.reason);
+        options.signal?.addEventListener("abort", forward, { once: true });
+        const panel = ui.semanticProgress?.(() => {
+          userCancelled = true;
+          if (!ready.has(language)) {
+            ui.system?.("已停止下载，语义识别已关闭。需要时可以点「更多」重新开启。");
+          }
+          inner.abort();
+        });
         try {
-          const response = await resolver.resolve(request, options);
+          const response = await resolver.resolve(request, {
+            ...options,
+            signal: inner.signal,
+            onProgress: (value) => { panel?.update?.(value); options.onProgress?.(value); },
+          });
+          ready.add(language);
           if (response?.kind === "suggest") lastQuestion = null;
           else lastOutcome = NO_CLOSE_MATCH;
           return response;
         } catch (error) {
-          // 超时与用户取消没有阶段，引擎已有专门文案，这里不重复。
+          if (userCancelled) {
+            // 下载中取消＝用户不想在本地运行模型：停止下载、关闭功能。
+            // 模型已就绪时的取消只是放弃当次请求，不该把已加载的模型一起丢掉。
+            if (!ready.has(language)) {
+              settings.set("semantic", "off");
+              disposeResolver();
+              ready.clear();
+            }
+            lastOutcome = null;
+            return { kind: "none" };
+          }
+          if (inner.signal.aborted || options.signal?.aborted) {
+            // 引擎超时：只放弃当次，模型在后台继续准备；超时文案由引擎给出。
+            if (!ready.has(language)) lastQuestion = input;
+            return { kind: "none" };
+          }
           if (error?.stage) {
             lastOutcome = CAUSES[error.stage] || UNAVAILABLE;
             retryable = true;
           }
           throw error;
+        } finally {
+          options.signal?.removeEventListener("abort", forward);
+          panel?.close?.();
         }
       },
       dispose: (reason) => resolver.dispose(reason),

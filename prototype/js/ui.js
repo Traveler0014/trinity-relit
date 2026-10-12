@@ -190,7 +190,17 @@ export const ui = {
     window.location.reload();
   },
 
+  // 决策层接管进度呈现（同意门控与取消语义都在它那里）后，这里不再自建面板。
   intentProgress(cancel) {
+    return this._semantic ? null : this.intentPanel(cancel);
+  },
+
+  // 决策层自己制面板时用（同意开启后、或已开启时的每一次识别）。
+  semanticProgress(cancel) {
+    return this.intentPanel(cancel);
+  },
+
+  intentPanel(cancel) {
     const box = document.createElement("div");
     box.className = "intent-panel system-msg";
     const status = document.createElement("span");

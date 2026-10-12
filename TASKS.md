@@ -139,3 +139,9 @@
 - 范围：新建 `prototype/js/intent-notice.js`、`tests/intent-notice.test.mjs`；修改 `ui.js`、`engine.js`（仅两行 `semanticHint?.()` 钩子）、`main.js`、`index.html`、`tests/boot-save.test.mjs`（stub 补 `setSemanticControls`/`semanticDebug`）、文档。
 - 内容：失败提示后的小字归因 + 「更多」弹窗（× 可关、可重复点开、失败类提供重试）；超时/取消不重复播报；弹窗里说明原版动词表限制。不改执行行为、不动设置层。
 - 验收：`npm test` 71/71、`npm run verify` 通过；浏览器实测归因小字、弹窗内容与 ×/重开交互。
+
+### T13 同意流程、设置层与取消语义 — pi（2026-10-12，待审查）
+- 范围：新建 `prototype/js/settings.js`；修改 `prototype/js/intent-notice.js`、`prototype/js/ui.js`、`tests/intent-notice.test.mjs`、文档。**不需要再改 engine.js**（钩子 T12 已加）。
+- 内容：设备级设置（默认 `ask`，与存档分离）；首次需要时先征求同意才下载；取消下载＝停止并写回 `off`；就绪后的取消只放弃当次；超时不改设置、不毁 Worker；「更多」菜单在开启态可关闭/重试。
+- 产品影响：首次自然语言输入不再自动开始下载模型，需玩家确认；其他行为不变。
+- 验收：`npm test` 77/77、`npm run verify` 通过；浏览器实测征求→拒绝→「更多」启用→自动重跑→候选确认执行。
