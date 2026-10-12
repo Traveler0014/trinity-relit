@@ -93,6 +93,8 @@ test('模型超时和UI取消均释放输入、不运行计时器', async () => 
   assert.equal(g.state.turns,0);
   assert.equal(ticks,0);
   assert.equal(g.eng._inputBusy,false);
+  assert.match(g.output.at(-1).text, /超时/);
+  assert.doesNotMatch(g.output.at(-1).text, /无法确定/);
   g.eng.intentTimeoutMs=1000;
   g.eng.ui.intentProgress=cancel=>{queueMicrotask(cancel);return {close(){}}};
   await g.eng.processInput('捞那只小鸟');
@@ -178,4 +180,73 @@ test('帮她撑伞由候选确认进入原版帮助剧情，不持有伞、不�
 // 来自首次真实英文模型评测：乱码最高余弦为 0.594，不能展示执行候选。
 test('英文拒识门槛覆盖真实模型乱码回归', () => {
   assert.deepEqual(rankIntentScores([{id:'item:take:coin',score:0.594195}], {minScore:INTENT_MIN_SCORE.en}), {kind:'none'});
+});
+
+test('慢加载超时只取消本次请求，重试复用Worker，过期结果不串到新输入', async () => {
+  const workers = [];
+  const resolver = new LocalIntentResolver({workerFactory: () => {
+    const w = {messages: [], postMessage(message) { this.messages.push(message); }, terminate() { this.terminated = true; }};
+    workers.push(w); return w;
+  }});
+  const controller = new AbortController();
+  const first = resolver.resolve({input: '第一次', candidates: []}, {signal: controller.signal});
+  controller.abort('timeout');
+  await assert.rejects(first, /timed out/);
+  assert.equal(workers.length, 1);
+  assert.equal(workers[0].terminated, undefined);
+  assert.equal(resolver.pending.size, 0);
+  const second = resolver.resolve({input: '第二次', candidates: []});
+  const worker = workers[0];
+  worker.onmessage({data: {id: worker.messages[0].id, type: 'result', result: action('old')}});
+  assert.equal(resolver.pending.size, 1, '过期结果不得完成新请求');
+  worker.onmessage({data: {id: worker.messages[1].id, type: 'result', result: action('new')}});
+  assert.deepEqual(await second, action('new'));
+  assert.equal(workers.length, 1);
+  resolver.dispose();
+});
+
+test('正常结果后的控制器清理不销毁已加载Worker', async () => {
+  let worker, count = 0;
+  const resolver = new LocalIntentResolver({workerFactory: () => {
+    count++; return worker = {postMessage(message) { this.message = message; }, terminate() { assert.fail('不应销毁'); }};
+  }});
+  for (let i = 0; i < 2; i++) {
+    const controller = new AbortController();
+    const result = resolver.resolve({input: '表达', candidates: []}, {signal: controller.signal});
+    worker.onmessage({data: {id: worker.message.id, type: 'result', result: {kind: 'none'}}});
+    await result;
+    controller.abort();
+  }
+  assert.equal(count, 1);
+});
+
+test('买缺宾语时列购买候选，确认前不消耗回合，确认后执行原事件', async () => {
+  const g = createGame({intentResolver: {resolve() { assert.fail('缺宾语不必下载模型'); }}});
+  g.eng.moveTo('broad_walk');
+  const before = g.eng.serialize().state;
+  g.eng.ui.chooseIntent = choices => {
+    assert.deepEqual(choices.map(c => c.id), ['event:buy_bag']);
+    assert.deepEqual(g.eng.serialize().state, before);
+    return choices[0].id;
+  };
+  await g.eng.processInput('买');
+  assert.ok(g.state.has('bag'));
+  assert.equal(g.state.turns, 1);
+  assert.equal(g.state.score, 1);
+  assert.match(g.output.map(x => x.text).join('\n'), /Bless yer/);
+  await g.eng.processInput('喂鸟');
+  assert.ok(g.state.hasFlag('birds_fed'));
+  assert.equal(g.state.turns, 2);
+});
+
+test('喂鸟缺少鸟食反馈条件不满足；取消购买不推进', async () => {
+  const g = createGame({intentResolver: {resolve() { assert.fail('已识别动作不应改猜其他动作'); }}});
+  g.eng.moveTo('broad_walk');
+  const before = g.eng.serialize().state;
+  await g.eng.processInput('喂鸟');
+  assert.match(g.output.at(-1).text, /条件还不满足/);
+  assert.deepEqual(g.eng.serialize().state, before);
+  g.eng.ui.chooseIntent = () => null;
+  await g.eng.processInput('买');
+  assert.deepEqual(g.eng.serialize().state, before);
 });

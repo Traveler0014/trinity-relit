@@ -59,3 +59,17 @@ Original prompt: 这里卡关了（Round Pond 场景中“捡起折纸鸟”和�
 - 人类要求先推送当前进度；将 T7/T8/T9 未提交改动汇总，目标 `origin/claude/rewrite-ranch`。
 - fetch 后主线已是当前 HEAD 祖先；脏工作区不能直接 rebase，先完成进度提交，再执行 rebase origin/main 并推送开发分支。
 - 提交前重跑 54/54 测试、章节规范和 diff 空白校验；模型资源、DAT、派生真值和临时截图排除，不推 main。
+
+
+## 2026-10-12 重复下载与短输入反馈
+
+- 用户反馈线上模型反复下载、没有选项，确认当前是 BGE Small ZH/EN embedding，不是对话生成模型。
+- 建立 `codex/fix-intent-loading`，基于已部署 main 5581f48；fetch 网络连接失败，未修改远端。
+- 发现 90 秒 timeout 使用通用 abort，LocalIntentResolver 随即销毁 Worker；未完成的模型下载下次从头开始，UI 却落入“无法确定”。改为 timeout 仅取消单个请求，Worker 和初始化 Promise 保留；显式取消仍终止。
+- 加入缺宾语事件确认候选、条件不满足反馈；Broad Walk “买”无需模型可选择买面包屑，之后“喂鸟”执行。该房间没有询问妇人的已实现原版事件，不补对话。
+- 58/58 测试、章节规范通过；旧出口仍 43；13 条真实模型语料通过。
+- 真实慢加载测试：推迟 onnx 请求，300ms 超时后重试；两次识别同一 Worker/一次下载；刷新页面第 2 个 Worker 仍 Cache Storage 命中，模型下载总次数 1。HTTP cache 经路由禁用，Cache Storage 仍启用；状态保护和买→喂鸟通过，无 pageerror。
+- 截图与结果 `/tmp/trinity-intent-lifecycle/`；技能启动截图 `/tmp/trinity-intent-fix-skill/shot-0.png`。补截图滚动等待，确保可见候选。
+- 当前改动仅本地，尚未推送/部署；下一步发布前同步主线，线上验证慢网仍应继续补充。
+
+- 发布前远端连接恢复，fetch 与 GitHub API 确认 main 仍为 5581f48。沿用本轮游戏发布授权，将已验证修复经 PR 检查后合并部署；实际状态以远端工作流结果为准。

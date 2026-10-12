@@ -70,6 +70,24 @@ export function intentStateStamp(engine) {
   return JSON.stringify(engine.serialize().state);
 }
 
+// 缺少宾语的明确动词，只列出同动词的当前事件，不需要模型猜测。
+export function completeCommand(engine, command) {
+  if (!command || command.noun || !command.verb) return null;
+  const candidates = buildIntentCandidates(engine).filter(candidate =>
+    candidate.id.startsWith('event:') && candidate.command.verb === command.verb);
+  return candidates.length && candidates.length <= 3 ? confirmedCandidates(engine, candidates) : null;
+}
+
+function confirmedCandidates(engine, choices, state = engine.state, stamp = intentStateStamp(engine)) {
+  const current = () => engine.state === state && !state.dead && intentStateStamp(engine) === stamp;
+  return { choices, current, validate(id) {
+    if (!current()) return null;
+    const original = choices.find(c => c.id === id);
+    const fresh = buildIntentCandidates(engine).find(c => c.id === id);
+    return original && fresh && JSON.stringify(original.command) === JSON.stringify(fresh.command) ? fresh : null;
+  } };
+}
+
 export async function suggestIntent(engine, input, resolver, { signal, onProgress } = {}) {
   if (!resolver || input.length > INTENT_INPUT_LIMIT || needsClarification(input)) return null;
   const candidates = buildIntentCandidates(engine);
@@ -87,10 +105,5 @@ export async function suggestIntent(engine, input, resolver, { signal, onProgres
   const ids = [...new Set(response.candidateIds)];
   const choices = ids.map(id => candidates.find(c => c.id === id));
   if (choices.some(c => !c)) return null;
-  return { choices, current, validate(id) {
-    if (!current()) return null;
-    const original = choices.find(c => c.id === id);
-    const fresh = buildIntentCandidates(engine).find(c => c.id === id);
-    return original && fresh && JSON.stringify(original.command) === JSON.stringify(fresh.command) ? fresh : null;
-  } };
+  return confirmedCandidates(engine, choices, state, stamp);
 }

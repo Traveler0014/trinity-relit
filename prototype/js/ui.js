@@ -185,7 +185,7 @@ export const ui = {
     box.className = "intent-panel system-msg";
     const status = document.createElement("span");
     status.setAttribute("role", "status");
-    status.textContent = "正在理解你的意思…首次使用需下载语言模型，可取消并使用标准指令。";
+    status.textContent = "正在理解你的意思…可取消并使用标准指令。";
     const button = document.createElement("button");
     button.className = "btn";
     button.textContent = "取消识别";
@@ -195,6 +195,8 @@ export const ui = {
     return {
       update: (progress) => {
         if (progress.status === "recognizing") status.textContent = "正在理解你的意思…";
+        else if (progress.status === "loading") status.textContent = "首次使用正在准备语言模型，慢网可能需要几分钟；可以取消并使用标准指令。";
+        else if (progress.status === "preparing") status.textContent = "正在复用已加载或正在准备的语言模型…";
         else if (progress.status === "progress" && Number.isFinite(progress.progress)) {
           status.textContent = `正在准备${progress.language === "zh" ? "中文" : "英文"}识别 · 当前文件 ${Math.round(progress.progress)}%（可取消）`;
         }
