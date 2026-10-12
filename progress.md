@@ -67,7 +67,7 @@ Original prompt: 这里卡关了（Round Pond 场景中“捡起折纸鸟”和�
 - 建立 `codex/fix-intent-loading`，基于已部署 main 5581f48；fetch 网络连接失败，未修改远端。
 - 发现 90 秒 timeout 使用通用 abort，LocalIntentResolver 随即销毁 Worker；未完成的模型下载下次从头开始，UI 却落入“无法确定”。改为 timeout 仅取消单个请求，Worker 和初始化 Promise 保留；显式取消仍终止。
 - 加入缺宾语事件确认候选、条件不满足反馈；Broad Walk “买”无需模型可选择买面包屑，之后“喂鸟”执行。该房间没有询问妇人的已实现原版事件，不补对话。
-- 58/58 测试、章节规范通过；旧出口仍 43；13 条真实模型语料通过。
+- 59/59 测试、章节规范通过；旧出口仍 43；13 条真实模型语料通过。
 - 真实慢加载测试：推迟 onnx 请求，300ms 超时后重试；两次识别同一 Worker/一次下载；刷新页面第 2 个 Worker 仍 Cache Storage 命中，模型下载总次数 1。HTTP cache 经路由禁用，Cache Storage 仍启用；状态保护和买→喂鸟通过，无 pageerror。
 - 截图与结果 `/tmp/trinity-intent-lifecycle/`；技能启动截图 `/tmp/trinity-intent-fix-skill/shot-0.png`。补截图滚动等待，确保可见候选。
 - 当前改动仅本地，尚未推送/部署；下一步发布前同步主线，线上验证慢网仍应继续补充。

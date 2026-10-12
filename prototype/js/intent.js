@@ -72,7 +72,7 @@ export function intentStateStamp(engine) {
 
 // 缺少宾语的明确动词，只列出同动词的当前事件，不需要模型猜测。
 export function completeCommand(engine, command) {
-  if (!command || command.noun || !command.verb) return null;
+  if (!command || command.noun || !command.verb || matchingEvent(engine, command)) return null;
   const candidates = buildIntentCandidates(engine).filter(candidate =>
     candidate.id.startsWith('event:') && candidate.command.verb === command.verb);
   return candidates.length && candidates.length <= 3 ? confirmedCandidates(engine, candidates) : null;

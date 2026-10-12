@@ -250,3 +250,15 @@ test('喂鸟缺少鸟食反馈条件不满足；取消购买不推进', async ()
   await g.eng.processInput('买');
   assert.deepEqual(g.eng.serialize().state, before);
 });
+
+
+test('原本无需宾语的明确事件保持直接执行，不被补全层拦截', async () => {
+  const g = setup(() => assert.fail('明确事件不调用模型'), () => assert.fail('明确事件不要求确认'));
+  g.eng.rooms = {...g.eng.rooms, round_pond: {...g.eng.currentRoom(), events: [{
+    id: 'bare_verb_fixture', match: {verb: ['wave']}, triggers: ['wave'],
+    act(s) { s.setFlag('bare_verb_executed'); },
+  }]}};
+  await g.eng.processInput('wave');
+  assert.ok(g.state.hasFlag('bare_verb_executed'));
+  assert.equal(g.state.turns, 1);
+});
