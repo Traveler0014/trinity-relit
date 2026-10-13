@@ -21,7 +21,7 @@ function makeUi(dialogResult = null) {
   return ui;
 }
 
-// 与真实 resolver 一致：abort 时对应请求拒绝，dispose 单独记录。
+// 隔离说明层的轻量替身；真实 resolver 的取消契约另有集成回归。
 function makeResolver(behaviour) {
   return {
     disposed: [],
@@ -161,7 +161,7 @@ test('引擎超时（abort reason=timeout）：不改设置、不销毁 Worker�
   assert.equal(notice.causeText(), null);
 });
 
-test('「更多」菜单：开启态是状态菜单，关闭态是征求；都说明原版动词表限制', async () => {
+test('「更多」菜单：开启态是状态菜单，关闭态是征求；说明当前实现的限制', async () => {
   reset();
   const ui = makeUi(null);
   const notice = createIntentNotice({ ui });
@@ -169,7 +169,7 @@ test('「更多」菜单：开启态是状态菜单，关闭态是征求；都�
   await notice.openMenu();
   assert.equal(ui.dialogs[0].title, '语义识别');
   assert.ok(ui.dialogs[0].actions.some(a => a.value === 'disable'));
-  assert.match(ui.dialogs[0].body, /原版 Trinity 的动词表/);
+  assert.match(ui.dialogs[0].body, /当前场景已实现的动作/);
 
   reset('off');
   await notice.openMenu();

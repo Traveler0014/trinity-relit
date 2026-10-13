@@ -264,8 +264,8 @@ export const ui = {
 
   // 通用确认菜单：标题 + 说明 + 动作按钮，右上角 × 关闭，Escape 视为取消。
   // 同时只允许一个，避免旧日志里的「更多」叠加出多个面板。
-  semanticDialog({ title, body, actions }) {
-    if (this._dialogOpen) return Promise.resolve(null);
+  semanticDialog({ title, body, actions, signal }) {
+    if (signal?.aborted || this._dialogOpen) return Promise.resolve(null);
     return new Promise(resolve => {
       this._dialogOpen = true;
       const box = document.createElement("div");
@@ -286,7 +286,12 @@ export const ui = {
       content.textContent = body;
       const row = document.createElement("div");
       row.className = "dialog-actions";
+      let finished = false;
+      const abort = () => finish(null);
       const finish = (action) => {
+        if (finished) return;
+        finished = true;
+        signal?.removeEventListener("abort", abort);
         this._dialogOpen = false;
         box.replaceChildren(Object.assign(document.createElement("div"), {
           className: "resume-chosen",
@@ -294,6 +299,7 @@ export const ui = {
         }));
         resolve(action ? action.value : null);
       };
+      signal?.addEventListener("abort", abort, { once: true });
       close.addEventListener("click", () => finish(null), { once: true });
       for (const action of actions) {
         const button = document.createElement("button");

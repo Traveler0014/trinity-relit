@@ -81,6 +81,7 @@ async function loadModel(language, progress) {
       };
       const model = await createPipeline(pipeline, env, local, language, onProgress);
       ready.add(language);
+      self.postMessage({ type: 'ready', language });
       return model;
     })();
     models.set(language, loading);

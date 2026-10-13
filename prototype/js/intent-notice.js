@@ -28,18 +28,23 @@ const NO_CLOSE_MATCH = { cause: "没有足够接近的动作可选", detail: "�
 const NOT_ENABLED = { cause: "语义识别已关闭", detail: "语义识别当前是关闭的，自然语言只按标准指令解析" };
 
 export function createIntentNotice({ ui, processInput } = {}) {
-  const ready = new Set();   // 本次会话已就绪的语言（决定取消时丢不丢模型）
+  let ready = new Set();   // 本次会话已就绪的语言（决定取消时丢不丢模型）
   let disposeResolver = () => {};
   let lastQuestion = null;   // 最近一条未得到模型判定的输入
   let lastOutcome = null;    // 最近一次失败的归因
+  let questionIsCurrent = () => true;
   let retryable = false;     // 只有失败（而非模型判定为不接近）才值得重试
 
-  function rerun() {
+  async function rerun() {
     if (!processInput || !lastQuestion) return;
     const input = lastQuestion;
     lastQuestion = null;
     retryable = false;
-    processInput(input);
+    if (!questionIsCurrent()) {
+      ui.system?.('游戏状态已经改变，请重新输入想执行的动作。没有消耗回合。');
+      return;
+    }
+    await processInput(input);
   }
 
   function standDown(input) {
@@ -73,8 +78,8 @@ export function createIntentNotice({ ui, processInput } = {}) {
         body:
           (ready.size ? "语义识别已开启，模型已就绪。" : "语义识别已开启，模型尚未就绪。") +
           (lastOutcome ? `\n上次识别：${lastOutcome.detail}。` : "") +
-          "\n本作只还原原版 Trinity 的动词表与互动——像「问」「搭话」这类动作原版里没有，" +
-          "无论怎么表达都不会有回应；能做什么以房间里实际存在的事件为准。" +
+          "\n语义识别只能从当前场景已实现的动作中提出建议。尚未实现的互动无法通过换一种表达补全，" +
+          "这不代表原版 Trinity 没有该动作。" +
           "\n关闭后将只解析标准指令，随时可以重新开启。",
         actions: [
           ...(retryable && lastQuestion ? [{ label: "重试刚才的输入", value: "retry", primary: true, done: "正在重试" }] : []),
@@ -85,7 +90,7 @@ export function createIntentNotice({ ui, processInput } = {}) {
       : consentDialog());
     if (action === "enable") {
       settings.set("semantic", "on");
-      rerun();
+      await rerun();
     } else if (action === "decline") {
       settings.set("semantic", "off");
     } else if (action === "disable") {
@@ -93,37 +98,36 @@ export function createIntentNotice({ ui, processInput } = {}) {
       ready.clear();
       disposeResolver();   // 关闭即释放模型与运行时内存
     } else if (action === "retry") {
-      rerun();
+      await rerun();
     }
   }
 
   // 包在底层 resolver 外面：同意门控、取消语义、失败归因都在这里裁决。
   function wrap(resolver) {
     disposeResolver = (reason) => resolver.dispose(reason);
-    // 就绪信号由底层 resolver 上报。
-    if ("onModelReady" in resolver) resolver.onModelReady = (language) => ready.add(language);
+    // 与真实 resolver 共用就绪状态；线程被释放时也会同步清空。
+    ready = resolver.readyLanguages || new Set();
 
     return {
       async resolve(request, options = {}) {
         const input = request.input;
         const language = languageOf(input);
-        lastQuestion = input;   // 未得到命中前都算「待重跑」
+        if (options.signal?.aborted) return { kind: "none" };
+        const isCurrent = options.isCurrent || (() => true);
+        questionIsCurrent = isCurrent;
+        lastQuestion = input;   // 重试前仍须核对创建请求时的游戏状态
         lastOutcome = null;
         retryable = false;
         if (settings.get("semantic") === "off") return standDown(input);
 
         if (settings.get("semantic") === "ask") {
-          const consent = ui.semanticDialog ? await ui.semanticDialog(consentDialog()) : null;
+          const consent = ui.semanticDialog ? await ui.semanticDialog({ ...consentDialog(), signal: options.signal }) : null;
+          // 超时、取消或读档之后，旧窗口的点击不得重放输入或开启下载。
+          if (options.signal?.aborted || !isCurrent()) return { kind: "none" };
           if (consent === "enable") settings.set("semantic", "on");
           else {
             if (consent === "decline") settings.set("semantic", "off");
             return standDown(input);
-          }
-          if (options.signal?.aborted) {
-            // 引擎等待期间已超时返回：启用后直接替用户重跑这句。
-            lastQuestion = input;
-            rerun();
-            return { kind: "none" };
           }
         }
 
@@ -137,7 +141,7 @@ export function createIntentNotice({ ui, processInput } = {}) {
           if (!ready.has(language)) {
             ui.system?.("已停止下载，语义识别已关闭。需要时可以点「更多」重新开启。");
           }
-          inner.abort();
+          inner.abort(ready.has(language) ? "request-cancelled" : undefined);
         });
         try {
           const response = await resolver.resolve(request, {

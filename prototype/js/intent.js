@@ -97,7 +97,7 @@ export async function suggestIntent(engine, input, resolver, { signal, onProgres
   const current = () => engine.state === state && !state.dead && intentStateStamp(engine) === stamp;
   let response;
   try {
-    response = await resolver.resolve({ input, candidates: candidates.map(({ id, examples }) => ({ id, examples })) }, { signal, onProgress });
+    response = await resolver.resolve({ input, candidates: candidates.map(({ id, examples }) => ({ id, examples })) }, { signal, onProgress, isCurrent: current });
   } catch { return signal?.aborted ? null : { unavailable: true }; }
   if (signal?.aborted || !current() || response?.kind !== 'suggest' || !Array.isArray(response.candidateIds) ||
       !response.candidateIds.length || response.candidateIds.length > 3 ||

@@ -77,3 +77,12 @@ Original prompt: 这里卡关了（Round Pond 场景中“捡起折纸鸟”和�
 - 线上慢网观测发现 progress 在读取约 16 MB 后报告 100%，随后仍继续接收至 22 MB 以上：压缩 Content-Length 与解压流长度不一致。UI 改为显示已接收 MB，完成阶段以资源 done / 模型 recognizing 事件为准，补浏览器回归防止“假完成”。
 
 - 线上长等待真实验收已通过，报告 `/tmp/trinity-intent-production-lifecycle/result.json`：ONNX 下载 1 次，刷新后 Worker 总数 2，确认候选可见、买→喂鸟成功，无 pageerror。首次联网确实耗时数分钟；脚本增加 `--timeout-ms`，本地默认 15 秒，公网可传 600000。PR #4 已部署，PR #5 收尾进度 UI。
+
+
+## 2026-10-13 PR #6 修复与合并验收
+
+- 人类要求修复审查发现的问题后合并。开发计划与范围登记 T14。
+- 取消保留已就绪模型；独立 ready 通知覆盖首次推理前和后台加载后；Worker 销毁同步清空状态。
+- 过期同意窗口关闭且旧按钮失效；所有菜单重试核对原游戏状态，读档/换房间后不重放；菜单原版动词说明修正。
+- 82/82 测试、章节规范通过；出口报告与 main 基线逐字一致（既有 43 项）。真实浏览器 Worker 1、ONNX 下载 1、无异常，取消不推进，确认只执行 1 回合。截图 /tmp/trinity-pr6-browser 与 /tmp/trinity-pr6-skill 已复核。
+- Git HTTPS fetch 两次连接超时；GitHub API 可用且确认 main 仍为 7ee0043、PR 头仍为 5049388。发布前继续同步校验，暂未合并。

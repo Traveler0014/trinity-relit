@@ -7,6 +7,7 @@ export class LocalIntentResolver {
     this.onDebug = onDebug;
     this.onFailure = onFailure;
     this.worker = null;
+    this.readyLanguages = new Set();
     this.pending = new Map();
     this.sequence = 0;
   }
@@ -18,6 +19,8 @@ export class LocalIntentResolver {
       this.worker.onmessage = ({ data }) => {
         // 库内部的非致命错误走调试通道，不影响正在进行或待决的请求。
         if (data.type === 'debug') { this.onDebug?.(data.message); return; }
+        // 初始化可能在某次请求超时后完成，就绪状态不依赖该请求仍在等待。
+        if (data.type === 'ready') { this.readyLanguages.add(data.language); return; }
         const entry = this.pending.get(data.id);
         if (!entry) return;
         if (data.type === 'progress') { entry.progress?.(data.progress); return; }
@@ -47,11 +50,13 @@ export class LocalIntentResolver {
     const id = ++this.sequence;
     return new Promise((resolve, reject) => {
       const abort = () => {
-        if (signal.reason !== 'timeout') { this.dispose(); return; }
+        if (!['timeout', 'request-cancelled'].includes(signal.reason)) { this.dispose(); return; }
         // 超时只放弃本次输入；保留正在下载的模型，避免慢网每次从头开始。
         this.pending.delete(id);
         cleanup();
-        reject(new Error('Recognition timed out; model preparation continues'));
+        reject(new Error(signal.reason === 'timeout'
+          ? 'Recognition timed out; model preparation continues'
+          : 'Recognition request cancelled; model retained'));
       };
       const cleanup = () => signal?.removeEventListener('abort', abort);
       this.pending.set(id, { resolve, reject, progress: onProgress, cleanup });
@@ -64,6 +69,7 @@ export class LocalIntentResolver {
   dispose(reason) {
     this.worker?.terminate();
     this.worker = null;
+    this.readyLanguages.clear();
     for (const entry of this.pending.values()) {
       entry.cleanup();
       entry.reject(Object.assign(new Error('Model unavailable or cancelled'), {
